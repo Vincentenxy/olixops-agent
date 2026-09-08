@@ -1,0 +1,9 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      OLIXOPS_MODE: release
+      OLIXOPS_DOCS_ENABLED: "false"
+    init: true
