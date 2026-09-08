@@ -21,6 +21,12 @@ secrets/
 *.key
 *.p12
 *.pfx
+.pulumi/
+Pulumi.*.yaml
+Pulumi.*.yml
+!Pulumi.*.example.yaml
+!Pulumi.*.example.yml
+# Keep ignoring any artifacts from the earlier Terraform design.
 .terraform/
 *.tfstate
 *.tfstate.*

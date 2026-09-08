@@ -1,15 +1,15 @@
 # olixops-agent
 
-通过自然语言分析应用需求、查询 MCP 信息、生成 Terraform 配置并组织部署的 DevOps 智能体后端。
+通过自然语言分析应用需求、查询 MCP 信息、生成结构化部署规格并使用 Pulumi 组织部署的 DevOps 智能体后端。
 
 本 README 是后端项目后续开发和代码评审的规范入口。接口、认证、数据库和日志约定同时作为前后端联调契约；下文明确区分已实现能力与后续架构要求，待接入事项统一记录在 [todo.md](todo.md)。
 
 ## 仓库与当前状态
 
-- `olixops-agent/`：Python 后端、Agent 工作流、MCP 查询适配和 Terraform Worker。
+- `olixops-agent/`：Python 后端、Agent 工作流、MCP 查询适配和 Pulumi Worker。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
-- 当前已实现：FastAPI 应用、公开健康检查、统一响应与 HTTP 错误处理、请求追踪、应用日志、uv 锁文件、质量检查及 API 容器配置。
-- 当前唯一业务 API 是 `GET /api/v1/pub/health`；JWT、数据库、Agent、MCP 和 Terraform Worker 尚未接入，暂不提供受保护业务接口或部署接口。
+- 当前已实现：FastAPI 应用、公开健康检查、统一响应与 HTTP 错误处理、请求追踪、应用日志、uv 锁文件、质量检查及 API 容器配置；已加入 Pulumi Python SDK，并完成 Windows 本地基础执行验证。
+- 当前唯一业务 API 是 `GET /api/v1/pub/health`；JWT、数据库、Agent、MCP 和 Pulumi Worker 尚未接入，暂不提供受保护业务接口或部署接口。
 - 后续开发先阅读本 README，再读取实际存在且适用于修改目录的 `AGENTS.md`。新增专项设计文档时，在对应规范处补充入口。
 
 ## 技术栈与环境管理
@@ -21,12 +21,14 @@
 | Web | FastAPI + Uvicorn，Pydantic 定义输入、输出和配置模型 |
 | Agent | LangGraph，持久化工作流进度 |
 | 工具查询 | MCP 客户端 / 适配层，对接现有查询能力 |
-| IaC | Terraform CLI，由独立 Worker 执行 |
+| IaC | Pulumi Python + Automation API，由独立 Worker 执行；运行时仍需 Pulumi CLI 和 Provider 插件 |
 | 数据 | PostgreSQL 持久化；Redis 用于缓存 |
 | 质量检查 | Ruff 检查与格式化、mypy 类型检查、pytest 测试 |
 | 部署 | Docker 容器化；开发环境采用 Docker Compose，目标部署于 Kubernetes |
 
-运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic 与质量工具的实际版本由 `uv.lock` 锁定；LangGraph、MCP、数据库及 Terraform 仍为后续接入目标。
+运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；LangGraph、MCP、数据库及 Pulumi Worker / 目标 Provider 仍为后续接入目标。
+
+IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已安装并验证本机 CLI 和项目 SDK，尚未接入业务 Worker、目标 Provider 或生产 state backend，也未完成真实部署验证。
 
 - 统一使用 uv 管理依赖和运行项目命令；通过 `uv add` / `uv add --dev` 更新声明与锁文件。
 - 提交 `pyproject.toml`、`uv.lock`、`.python-version`；`.venv/`、本地密钥、真实 `.env` 和工具缓存加入忽略规则。
@@ -49,8 +51,8 @@ olixops-agent/
 │   ├── models/             # 数据库模型
 │   ├── agents/             # LangGraph 状态、节点和工作流
 │   ├── integrations/mcp/   # MCP 查询适配
-│   └── workers/            # 部署任务领取、Terraform 执行与结果回收
-├── terraform/              # 可复用模块和模板；运行产物另行保存
+│   └── workers/            # 部署任务领取、Pulumi Automation API 执行与结果回收
+├── iac/                    # Pulumi Python 项目、可复用组件与模板；运行产物另行保存
 ├── migrations/             # 数据库版本迁移
 ├── tests/                  # 单元和集成测试
 ├── design/                 # 接口、数据与部署设计
@@ -60,7 +62,7 @@ olixops-agent/
 └── README.md
 ```
 
-路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，Terraform 子进程由 Worker 管理。前端代码保存在 `olixops-agent-web/`。
+路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，Pulumi Automation API 及其 CLI / Provider 子进程由独立 Worker 管理，不在 FastAPI 请求内运行。前端代码保存在 `olixops-agent-web/`。
 
 ## Python 编码规范
 
@@ -176,28 +178,34 @@ import logging
 
 logger = logging.getLogger(__name__)
 logger.info("server started", extra={"port": 8000})
-logger.info("deployment step finished", extra={"task_id": "example-task", "step": "plan"})
+logger.info("deployment step finished", extra={"task_id": "example-task", "step": "preview"})
 logger.warning("MCP query timed out", extra={"server_name": "inventory"})
 ```
 
-日志级别统一使用 `debug` / `info` / `warning` / `error`；在异常处理块内使用 `logger.exception` 记录堆栈。过滤 Authorization、Cookie、密钥及 Terraform 输出中的敏感值。
+日志级别统一使用 `debug` / `info` / `warning` / `error`；在异常处理块内使用 `logger.exception` 记录堆栈。过滤 Authorization、Cookie、密钥及 Pulumi 输出中的敏感值。Automation API 返回值和引擎事件按字段映射、脱敏后再入库或发送前端；支持 `show_secrets` 的调用显式关闭该选项，不直接序列化完整结果。secret 加密不能代替日志脱敏。
 
-## Agent 与 Terraform 执行规范
+## Agent 与 Pulumi 执行规范
 
-- MCP 当前提供信息查询；Agent 负责理解需求和生成配置，实际 Terraform 操作由 Worker 执行。
-- 优先生成类型明确的部署规格，再选用可复用 Terraform 模块并生成配置；部署任务记录应用代码版本、模块版本和输入参数引用。
-- Terraform 流程按 `init → validate → plan → apply → 验证结果` 组织；执行器使用参数列表启动子进程，固定 Terraform / Provider 版本，并设置超时和退出处理。
-- `plan` 保存为任务产物；`apply` 执行该任务对应的保存计划。需要人工审核时，审核结果绑定具体计划；计划或配置变化后重新生成并按环境授权策略处理。
-- 每次运行使用独立工作目录；同一套资源的变更串行协调，Terraform 使用支持锁定的远程状态后端。运行生成的 state、plan 和 `.terraform/` 不提交到 Git。
-- LangGraph checkpoint、业务任务状态与 Terraform state 分别保存；Worker 重启或调用超时后，先核对已执行结果，再决定恢复或重试。
-- 长任务提交后返回 `task_id`，由后端持续执行；客户端断开不等于取消。取消请求由 Worker 协调子进程结束并记录实际结果。
+以下是后续接入要求；当前已加入 Pulumi SDK 并安装本机 CLI，尚无业务组件、业务 stack 或可执行部署接口。一次性本地验证只使用常量输出，临时 stack/state 已清理。
+
+- MCP 的接入范围是信息查询；Agent 负责理解需求，输出经过 Pydantic 校验的部署规格。由受控、版本化的 Pulumi Python 组件和模板声明资源；模型生成的新组件先经过代码评审和测试，不作为请求内容直接执行。
+- Worker 通过 Python Automation API 管理 project、stack 和资源生命周期；其底层仍调用 Pulumi CLI。固定 Worker 镜像、CLI、Python SDK、Provider SDK / 插件及组件版本，接入时验证完整依赖链与 CPython 3.14、uv 的兼容性。
+- 流程按 `校验规格与组件 → 选择 stack 并配置 → 按策略 refresh → preview → 策略检查及环境授权 → up → 验证结果` 组织。`refresh` 用于读取实际资源并更新状态；漂移检测频率及如何接受外部变更由环境策略定义，不把普通 `preview` 当作已检查全部漂移。
+- 保存预览摘要及相关产物；需要人工审核时，审核记录绑定部署规格、程序与组件版本、依赖锁、配置版本、目标 stack、状态版本或摘要及预览摘要。配置只保存必要的非敏感字段和密钥版本引用。执行前核对这些绑定，发现变化时重新预览，并按环境策略重新授权；不能仅凭旧预览页面调用 `up`。
+- Pulumi 支持 `preview --save-plan` / `up --plan`（Automation API 的 `plan` 参数），但它会重新运行程序，并在执行过程中逐步检查计划约束；发现偏差前可能已有计划内变更完成。计划 JSON 格式仍被官方标为实验性，不作为平台 API 契约。保存计划需在固定版本下验证未知值、动态资源和 Provider 配置的限制，不能视为 Terraform 保存计划的等价替换或事务保证。严格审核环境在此验证完成前不开放执行。
+- stack 代表持续管理的一组资源，以项目、应用、环境及资源归属确定稳定身份；`task_id` 代表一次运行，不能每次任务都创建新的 stack。同一 stack 的写操作串行调度，backend lock 提供最终并发保护；共享资源划分独立归属，避免被多个 stack 同时管理。
+- 每次运行使用独立工作目录和隔离执行环境，限制凭据作用域、文件及网络访问，设置超时和退出处理。`preview` 同样会运行 Python 程序，不能视为任意代码的安全沙箱。确需直接调用 CLI 时使用参数列表启动子进程，不拼接命令字符串。
+- Pulumi state 保存在明确选择的远程 backend，生产执行不依赖 Worker 本地磁盘。可选择 Pulumi Cloud 或自行管理的 DIY backend；DIY 已有锁与历史，但存储权限、备份恢复、可用性和平台审计需自行落实。backend 与 secrets provider 是分别配置的选项，当前均未确定。
+- LangGraph checkpoint、PostgreSQL 中的业务任务记录、Pulumi state 分别管理。Worker 重启、取消、超时或部分失败后，先核对操作历史、state 和实际资源，再决定恢复或重试；取消不等于回滚，也不应直接解锁后重复 `up`。删除资源使用独立授权的 `destroy` 操作，不作为失败任务的默认补偿。
+- 长任务提交后返回 `task_id`，由后端持续执行；客户端断开不等于取消。Automation API 的结构化引擎事件转换为平台自己的步骤、资源变更和日志事件，持久化后供前端查询或订阅，保留事件顺序与重连游标。
+- 受控 Pulumi 程序、`Pulumi.yaml` 和依赖锁可提交；实际 stack 配置按环境管理，仓库只提供不含凭据的示例。state 导出、计划、密钥及运行缓存放入 Git 忽略的 `runtime/` 或外部产物存储，不提交 `.pulumi/`。secret 字段及其派生值应使用 Pulumi 的 secret 机制，普通 state 字段仍可能为明文，状态与产物存储均需权限控制。
 - IaC 管理基础设施资源；需要构建镜像时由独立构建步骤生成镜像及固定标识，再交给部署步骤使用。
 
 ## 开发与验证流程
 
 1. 阅读本 README、相关设计和当前代码，确认任务范围及工作区已有改动。
 2. 涉及接口、数据结构、状态流转的变更，先明确契约，再实现相应模块并同步文档。
-3. 新增或变更行为使用 pytest 验证可观察结果；覆盖认证、统一错误、请求 ID、MCP 失败、Terraform 失败及恢复等相关路径。
+3. 新增或变更行为使用 pytest 验证可观察结果；覆盖认证、统一错误、请求 ID、MCP 失败、Pulumi 失败及恢复等相关路径。
 4. 单元测试使用可控的外部接口替身；集成测试覆盖实际组件协作。真实云部署验证单独配置目标与凭据，并在任务授权范围内执行，分别报告模拟验证与真实验证结果。
 5. 完成适用于改动的检查，修复本次引入的问题；报告实际执行的检查及未执行原因。纯文档变更检查内容、示例和链接。
 6. 按任务要求提交本次改动，使用 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:` 描述提交目的，保留已有无关改动。
@@ -231,7 +239,25 @@ curl -i http://127.0.0.1:8000/api/v1/pub/health
 | `OLIXOPS_PORT` | `8000` | `main.py` 启动入口端口 |
 | `OLIXOPS_DOCS_ENABLED` | `false` | 显式开启 `/docs` 与 `/openapi.json`，仅供开发使用 |
 
-容器默认使用 release 模式并关闭文档；`.env.example` 是开启开发文档的本地示例。真实 `.env`、凭据和 Terraform 运行产物均不提交。
+容器默认使用 release 模式并关闭文档；`.env.example` 是开启开发文档的本地示例。真实 `.env`、凭据和 Pulumi 运行产物均不提交。
+
+### Pulumi 本地基础环境
+
+2026-09-09 已在 Windows 开发机安装 uv 0.12.10、Pulumi CLI 3.261.0，项目通过 `uv add` 加入 `pulumi==3.261.0` 并更新锁文件；Python 仍为 3.14.7。Automation API 包含在 `pulumi` SDK 中，无需额外安装独立包。
+
+CLI 的标准用户安装目录为 `%USERPROFILE%\.pulumi\bin`，uv 为 `%USERPROFILE%\.local\bin`，已加入该开发机的用户 PATH；已打开的终端或 IDE 可能需要重启才能读取新 PATH。新环境需自行安装 CLI，再使用 `uv sync --locked` 同步 Python 依赖。基本检查命令：
+
+```bash
+uv --version
+pulumi version
+uv run python -c "from importlib.metadata import version; from pulumi import automation; print(version('pulumi'))"
+```
+
+本次使用隔离的临时工作目录、`pulumi_home` 和本地文件 backend，验证常量输出程序的 `preview → up → outputs → refresh → 再次 preview → destroy`、引擎事件及 stack 清理；未使用任何目标 Provider 或云资源，也未修改用户默认 backend。Windows 本地 backend 路径使用 `file://` 加正斜线格式的绝对路径（例如 `file://E:/path/to/state`）；本次 CLI 对 `Path.as_uri()` 生成的 `file:///E:/...` 出现盘符重复，已用前述格式通过验证。
+
+目标 Provider、真实凭据、远程 backend 和 Worker 镜像仍待接入。现有 Dockerfile 是 API 入口，未安装 Pulumi CLI；本机验证不代表容器或真实部署已经可用。
+
+### 质量检查与容器
 
 质量检查：
 
@@ -252,7 +278,7 @@ docker compose logs -f api
 
 本地端口绑定 `127.0.0.1:8000`。本轮 Compose 配置校验及 GitHub CI 镜像构建通过；本地镜像构建受 Docker Hub 基础镜像元数据访问超时阻塞，容器运行尚未验证，证据见 [todo.md](todo.md)。后续实现 Worker 时增加独立进程入口与服务；运行产物、日志和数据库状态使用明确的外部存储，Kubernetes 增加就绪与存活探针。
 
-当前测试覆盖健康响应、404/405/401/422/500 统一错误、请求 ID 生成与透传、认证错误响应头保留、并发上下文隔离及异常清理、文档开关、日志格式。真实 MCP、Terraform 和云部署尚未验证，详情见 [todo.md](todo.md)。
+当前测试覆盖健康响应、404/405/401/422/500 统一错误、请求 ID 生成与透传、认证错误响应头保留、并发上下文隔离及异常清理、文档开关、日志格式。真实 MCP、Pulumi 和云部署尚未验证，详情见 [todo.md](todo.md)。
 
 ## 官方参考
 
@@ -260,4 +286,8 @@ docker compose logs -f api
 - [FastAPI 错误处理](https://fastapi.tiangolo.com/tutorial/handling-errors/)
 - [Python contextvars](https://docs.python.org/3/library/contextvars.html)
 - [Ruff 格式化](https://docs.astral.sh/ruff/formatter/)
-- [Terraform 自动化执行](https://developer.hashicorp.com/terraform/tutorials/automation/automate-terraform)
+- [Pulumi Automation API](https://www.pulumi.com/docs/iac/concepts/automation-api/)
+- [Pulumi Python 与 uv](https://www.pulumi.com/docs/iac/languages-sdks/python/)
+- [Pulumi Update Plans](https://www.pulumi.com/docs/iac/operations/stack-management/update-plans/)
+- [Pulumi State 与 Backends](https://www.pulumi.com/docs/iac/concepts/state-and-backends/)
+- [Pulumi Secrets](https://www.pulumi.com/docs/iac/concepts/secrets/)
