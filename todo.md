@@ -37,7 +37,7 @@
 | CPython 3.14 中 422 标准短语为 `Unprocessable Content` | 响应和 OpenAPI 统一动态读取 `HTTPStatus(...).phrase`；前端应按状态 / code 判断错误 |
 | 首次开发依赖下载发生 PyPI 连接重置、传输缓慢 | 使用清华 PyPI 镜像取得与官方 `uv.lock` SHA256 一致的 Ruff / mypy wheel，完成本地安装；项目仍锁定官方 PyPI 来源，`uv sync --locked` 已通过 |
 | Starlette 测试客户端使用 AnyIO 已弃用的 `anyio.abc.BlockingPortal` 别名 | 已按当前 Starlette 要求使用 `httpx2`；仍有 1 条上游 AnyIO 弃用警告，14 个测试通过。后续依赖更新时复核，当前未修改第三方代码或屏蔽警告 |
-| Docker Hub 基础镜像元数据访问超时 | Docker 服务本身可用，Compose 配置校验通过；实际镜像构建和容器启动尚未完成，不能视为已验证 |
+| 本地 Docker Hub 基础镜像元数据访问超时 | Docker 服务本身可用，Compose 配置校验通过；GitHub CI 已成功构建镜像，本地构建和容器启动验收仍未完成 |
 | 初始规范描述的是完整目标架构，易被误解为已实现 | README 和本文件标明当前唯一业务接口及未接入组件；没有占位部署接口或假执行结果 |
 
 ## 验证记录
@@ -50,6 +50,7 @@
 - [x] `uv run mypy app tests main.py`：14 个源文件通过 strict 类型检查。
 - [x] `uv run pytest`：14 passed，1 条上游弃用警告（见“已发现问题与处理”），无失败。
 - [x] `docker compose config --quiet` 配置校验通过。
-- [ ] API 镜像构建、非 root 用户及容器健康检查：已尝试构建，Docker Hub 拉取 `python:3.14.7-slim` 元数据时 `context deadline exceeded`；尚未执行到应用构建阶段。网络恢复后重新构建并验证。
+- [x] GitHub CI 中 API 镜像构建通过；本地构建在 Docker Hub 拉取 `python:3.14.7-slim` 元数据时出现 `context deadline exceeded`，未执行到应用构建阶段。
+- [ ] 容器启动、非 root 用户及容器健康检查：本地镜像源网络恢复后重新构建并验证。镜像构建通过不等于容器运行验收完成。
 - [x] 前端开发代理调用实际 API 的浏览器联调：后端未启动时展示连接失败，启动后健康检查成功。
-- [ ] 推送远程后确认 CI 的实际执行结果；本地检查通过不等于远程 CI 已通过。
+- [x] [Backend CI #1](https://github.com/Vincentenxy/olixops-agent/actions/runs/34228792131) 对提交 `3ee3382` 执行成功：依赖安装、Ruff、strict mypy、pytest 与 Docker 镜像构建全部通过。
