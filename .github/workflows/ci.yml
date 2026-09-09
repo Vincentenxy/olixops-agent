@@ -11,7 +11,28 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: olixops
+          POSTGRES_DB: olixops
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["15432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U olixops -d olixops"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["16379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      OLIXOPS_DATABASE_URL: postgresql+psycopg://olixops:ci-only-password@127.0.0.1:15432/olixops
+      OLIXOPS_TEST_DATABASE_URL: postgresql+psycopg://olixops:ci-only-password@127.0.0.1:15432/olixops
+      OLIXOPS_TEST_REDIS_URL: redis://127.0.0.1:16379/15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,8 +50,30 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
       - name: Type check
-        run: uv run mypy app tests main.py
+        run: uv run mypy app tests scripts main.py
+      - name: Migrate PostgreSQL
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
       - name: Test
         run: uv run pytest
       - name: Build container
         run: docker build -t olixops-agent:ci .
+      - name: Verify isolated Pulumi worker
+        run: docker run --rm olixops-agent:ci python -m app.workers.pulumi self-test --timeout 120
+      - name: Verify API container and local login
+        env:
+          OLIXOPS_BOOTSTRAP_PASSWORD: ci-disposable-account-password
+          OLIXOPS_CHECK_USERNAME: ci-smoke
+          OLIXOPS_CHECK_PASSWORD: ci-disposable-account-password
+        run: |
+          docker volume create olixops-ci-runtime
+          docker run --rm -v olixops-ci-runtime:/app/runtime olixops-agent:ci python -m app.cli init-keys
+          docker run --rm --network host -e OLIXOPS_DATABASE_URL -e OLIXOPS_BOOTSTRAP_PASSWORD olixops-agent:ci python -m app.cli create-user --username ci-smoke --name CI
+          docker run -d --name olixops-ci-api --network host -v olixops-ci-runtime:/app/runtime -e OLIXOPS_DATABASE_URL -e OLIXOPS_REDIS_URL=redis://127.0.0.1:16379/0 olixops-agent:ci
+          uv run python scripts/check_api.py
+      - name: Stop verification container
+        if: always()
+        run: |
+          docker rm -f olixops-ci-api || true
+          docker volume rm olixops-ci-runtime || true

@@ -1,9 +1,78 @@
+name: olixops-agent
+
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: olixops
+      POSTGRES_DB: olixops
+      POSTGRES_PASSWORD: ${OLIXOPS_LOCAL_DB_PASSWORD:?Run python scripts/init_local.py first}
+    ports:
+      - "127.0.0.1:${OLIXOPS_LOCAL_DB_PORT:-15432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U olixops -d olixops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${OLIXOPS_LOCAL_REDIS_PORT:-16379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build: .
+    profiles: ["app"]
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       OLIXOPS_MODE: release
       OLIXOPS_DOCS_ENABLED: "false"
+      OLIXOPS_DATABASE_URL: postgresql+psycopg://olixops:${OLIXOPS_LOCAL_DB_PASSWORD}@postgres:5432/olixops
+      OLIXOPS_REDIS_URL: redis://redis:6379/0
+      OLIXOPS_JWT_PRIVATE_KEY_PATH: /app/runtime/keys/jwt-private.pem
+      OLIXOPS_JWT_PUBLIC_KEY_PATH: /app/runtime/keys/jwt-public.pem
+      # Local HTTP only; production requires HTTPS and Secure cookies.
+      OLIXOPS_REFRESH_COOKIE_SECURE: "false"
+      OLIXOPS_BROWSER_ORIGINS: '["http://127.0.0.1:5173","http://localhost:5173","http://127.0.0.1:5175","http://localhost:5175","http://127.0.0.1:8080","http://localhost:8080"]'
+    volumes:
+      - api-runtime:/app/runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     init: true
+
+  worker-check:
+    build: .
+    profiles: ["tools"]
+    command: ["python", "-m", "app.workers.pulumi", "self-test", "--timeout", "120"]
+    init: true
+
+  web:
+    build: ../olixops-agent-web
+    profiles: ["app"]
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      API_UPSTREAM: http://api:8000
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:
+  api-runtime:

@@ -8,8 +8,8 @@
 
 - `olixops-agent/`：Python 后端、Agent 工作流、MCP 查询适配和 Pulumi Worker。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
-- 当前已实现：FastAPI 应用、公开健康检查、统一响应与 HTTP 错误处理、请求追踪、应用日志、uv 锁文件、质量检查及 API 容器配置；已加入 Pulumi Python SDK，并完成 Windows 本地基础执行验证。
-- 当前唯一业务 API 是 `GET /api/v1/pub/health`；JWT、数据库、Agent、MCP 和 Pulumi Worker 尚未接入，暂不提供受保护业务接口或部署接口。
+- 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、前端登录联调。
+- 当前提供本地认证、账户和基础服务状态 API；Agent、MCP、业务任务和真实资源部署等待业务设计，不开放从 HTTP 执行 Pulumi 程序的接口。
 - 后续开发先阅读本 README，再读取实际存在且适用于修改目录的 `AGENTS.md`。新增专项设计文档时，在对应规范处补充入口。
 
 ## 技术栈与环境管理
@@ -28,7 +28,7 @@
 
 运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；LangGraph、MCP、数据库及 Pulumi Worker / 目标 Provider 仍为后续接入目标。
 
-IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已安装并验证本机 CLI 和项目 SDK，尚未接入业务 Worker、目标 Provider 或生产 state backend，也未完成真实部署验证。
+IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已实现独立 Worker 的受控程序验证入口，CLI 与 SDK 固定为 3.261.0；目标 Provider、持久任务和生产 state backend 待接入。模块说明见 [Pulumi 基础集成](design/pulumi-foundation.md)，数据库设计见 [数据库设计](design/database.md)。
 
 - 统一使用 uv 管理依赖和运行项目命令；通过 `uv add` / `uv add --dev` 更新声明与锁文件。
 - 提交 `pyproject.toml`、`uv.lock`、`.python-version`；`.venv/`、本地密钥、真实 `.env` 和工具缓存加入忽略规则。
@@ -133,9 +133,9 @@ response.http_error(status_code=401)
 
 ## 认证与用户上下文
 
-以下是接入业务接口时必须实现的认证约定；当前仅开放健康检查，JWT 验签与用户解析尚未实现。
+当前使用本地账号、Argon2 密码哈希和固定 RS256 签名；JWT 校验 issuer、audience、expiry 及必需 claims，并查数据库中的用户状态和有效会话。首次用户由 CLI 创建，没有内置默认密码或公开注册接口。后续外部身份源按以下兼容约定接入。
 
-- 使用 Bearer JWT 和 RSA 公钥验签；算法允许列表为 RS256 / RS384 / RS512，实际验证使用服务端配置的固定列表。
+- 使用 Bearer JWT 和 RSA 公钥验签；当前固定 RS256。旧项目允许的 RS384 / RS512 仅作为未来兼容候选，新增前明确配置和测试，不使用 token 自报算法。
 - 公钥通过配置注入，兼容 base64 编码的 DER 公钥及 PEM 文本；配置模型在启动时解析和校验。
 - 认证接口通过统一 FastAPI 依赖完成验签及用户解析；缺失 token、格式错误、验签失败、token 过期或缺少必需用户标识时，统一返回 HTTP 401 和上述错误结构。
 - 精确按路由分组区分公开与认证接口；有效身份访问无权限资源时返回 HTTP 403。
@@ -153,7 +153,7 @@ response.http_error(status_code=401)
 
 ## 数据库规范
 
-以下为后续持久化约定；当前骨架运行不依赖 PostgreSQL 或 Redis。
+已实现 SQLAlchemy async + psycopg、Alembic 迁移及 `local_users` / `auth_sessions` / `login_throttles` 三表。Redis 使用单个异步连接池，提供命名空间、显式 TTL 和连接状态；认证会话不依赖 Redis 保存。详细 DDL 见 [数据库设计](design/database.md)。
 
 - PostgreSQL 保存业务数据和任务状态；Redis 用于缓存，不作为部署任务的唯一持久化来源。
 - 所有业务表设计记录在 `design/database.md`，使用 Markdown 与 SQL 代码块。该文件在首次数据库设计时创建，结构变更同步更新设计和版本迁移。
@@ -166,7 +166,7 @@ response.http_error(status_code=401)
 
 - 统一使用 Python `logging`；模块通过 `logging.getLogger(__name__)` 获取 logger，格式器和上下文过滤器集中配置。
 - debug 模式输出带颜色的可读文本，INFO 使用蓝绿色、ERROR 使用红色；release 模式输出 JSON，便于采集。时间使用带时区的 ISO 8601 格式。
-- 请求入口读取 `X-Request-Id`：携带则透传，未携带则生成 32 位十六进制 ID；响应头回写同名字段。
+- 请求入口读取 `X-Request-Id`：透传 1–128 位字母、数字及 `._:-` 组成且以字母数字开头的值；缺失或无效时生成 32 位十六进制 ID，响应头回写。限制输入避免控制字符进入日志。
 - 使用 `contextvars.ContextVar` 管理当前执行上下文的 `trace_id`，请求结束时重置；日志有 trace ID 时输出，无值时省略。
 - HTTP 访问日志包含 `method`、`path`、`status_code`、`duration_ms`、`client_ip`；部署日志补充 `task_id` 和 `step`。
 - 下游 HTTP 请求继续透传 `X-Request-Id`。跨进程 Worker 通过任务记录显式接收 `trace_id` 和 `task_id`，在执行入口绑定，结束后清理。
@@ -182,11 +182,11 @@ logger.info("deployment step finished", extra={"task_id": "example-task", "step"
 logger.warning("MCP query timed out", extra={"server_name": "inventory"})
 ```
 
-日志级别统一使用 `debug` / `info` / `warning` / `error`；在异常处理块内使用 `logger.exception` 记录堆栈。过滤 Authorization、Cookie、密钥及 Pulumi 输出中的敏感值。Automation API 返回值和引擎事件按字段映射、脱敏后再入库或发送前端；支持 `show_secrets` 的调用显式关闭该选项，不直接序列化完整结果。secret 加密不能代替日志脱敏。
+日志级别统一使用 `debug` / `info` / `warning` / `error`；异常保留类型和堆栈位置，省略可能含凭据的异常原文、源码行和局部变量。配置值和常见 password/token/Bearer/连接串/私钥形式会脱敏，任意业务文本仍需调用方选择可公开字段，禁止记录请求正文。Automation API 返回值和引擎事件按字段映射、脱敏后再入库或发送前端；支持 `show_secrets` 的调用显式关闭该选项，不直接序列化完整结果。secret 加密不能代替日志脱敏。
 
 ## Agent 与 Pulumi 执行规范
 
-以下是后续接入要求；当前已加入 Pulumi SDK 并安装本机 CLI，尚无业务组件、业务 stack 或可执行部署接口。一次性本地验证只使用常量输出，临时 stack/state 已清理。
+以下规范适用于后续业务执行。当前已有 Automation API 适配层和独立 `self-test` Worker，使用固定常量程序、隔离目录/状态、脱敏结果及进程组超时；尚无业务组件、持久业务 stack 或部署接口。临时自测不等同于生产 Worker 调度。
 
 - MCP 的接入范围是信息查询；Agent 负责理解需求，输出经过 Pydantic 校验的部署规格。由受控、版本化的 Pulumi Python 组件和模板声明资源；模型生成的新组件先经过代码评审和测试，不作为请求内容直接执行。
 - Worker 通过 Python Automation API 管理 project、stack 和资源生命周期；其底层仍调用 Pulumi CLI。固定 Worker 镜像、CLI、Python SDK、Provider SDK / 插件及组件版本，接入时验证完整依赖链与 CPython 3.14、uv 的兼容性。
@@ -210,75 +210,99 @@ logger.warning("MCP query timed out", extra={"server_name": "inventory"})
 5. 完成适用于改动的检查，修复本次引入的问题；报告实际执行的检查及未执行原因。纯文档变更检查内容、示例和链接。
 6. 按任务要求提交本次改动，使用 `feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:` 描述提交目的，保留已有无关改动。
 
-首次运行（需要已安装 uv）：
+### 本地开发启动
+
+两个仓库保持同级目录。先在后端执行，依赖锁已包含 Python 库；Docker 仅启动本项目的 PostgreSQL/Redis：
 
 ```bash
 uv sync --locked
-cp .env.example .env
+uv run python scripts/install_pulumi.py
+uv run python scripts/init_local.py
+docker compose up -d --wait postgres redis
+uv run python -m app.cli init-keys
+uv run alembic upgrade head
+uv run python -m app.cli create-user --username admin --name 管理员 --admin
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-IDE 选择项目 `.venv/bin/python`。也可以使用 `uv run python main.py`，该入口读取 `OLIXOPS_HOST` / `OLIXOPS_PORT`。直接运行 Uvicorn 时监听地址和端口使用其命令行参数。
+`create-user` 在终端安全读取并确认 12–128 字符密码；自动化可通过 `OLIXOPS_BOOTSTRAP_PASSWORD` 注入。不存在公开默认密码。再次执行生成配置、密钥或创建同名用户会保留已有值，不重置账号。`.env`、密钥和 `runtime/` 不进入 Git；`init_local.py` 为本地数据库生成随机密码。IDE 使用 `.venv/bin/python`。
 
-健康检查：
+前端在 `olixops-agent-web` 执行 `pnpm install --frozen-lockfile && pnpm dev`，浏览器地址以终端输出为准。默认代理后端 `127.0.0.1:8000`；登录后可查看连接状态和账户设置。当前机器的本地 `admin` 初始凭据单独保存在忽略的 `runtime/local-login.json`，首次使用后可通过账户页面修改，随后移除这份本地交接文件。
 
-```bash
-curl -i http://127.0.0.1:8000/api/v1/pub/health
-```
+### 接口与会话
 
-成功正文为 `{"code":0,"msg":"","data":{"status":"ok","service":"olixops-agent"}}`，响应头包含 `X-Request-Id`。该接口只验证 API 进程存活；尚未接入的数据库、MCP 或 Worker 不在检查范围内。
+所有成功结果仍使用 `{code:0,msg:"",data:...}`，HTTP 错误维持前述统一结构。
 
-前端开发服务器将 `/api` 代理到 `http://127.0.0.1:8000`；生产环境由前端反向代理转发同一路径，使用同源访问。
+| 方法与路径 | 请求/结果 |
+|---|---|
+| `GET /api/v1/pub/health` | API 进程存活，`data={status:"ok",service:"olixops-agent"}` |
+| `GET /api/v1/pub/ready` | 数据库已迁移、RSA 密钥可用、已配置 Redis 可连接时 200，否则统一 503；不检查尚未配置的业务 Provider |
+| `POST /api/v1/pub/auth/login` | `{username,password}`；返回 access token、有效秒数和安全用户字段，设置 refresh Cookie |
+| `POST /api/v1/pub/auth/refresh` | `{}`；从 Cookie 原子轮换 refresh token，返回新 access token 和当前用户 |
+| `POST /api/v1/pub/auth/logout` | `{}`；优先撤销有效 Bearer 的会话，否则使用 Cookie，清理 Cookie，重复退出可安全执行 |
+| `GET /api/v1/auth/me` | Bearer 认证，返回 `{user_id,username,name,is_admin}` |
+| `POST /api/v1/auth/password` | Bearer + `{current_password,new_password}`，成功撤销此用户全部会话并清 Cookie；旧密码错误返回 400 |
+| `GET /api/v1/system/status` | Bearer 认证，返回 database/redis/auth/pulumi 状态和 Pulumi 版本，不返回连接串或密钥 |
 
-配置项（全部带 `OLIXOPS_` 前缀，完整定义见 `app/core/config.py`）：
+Access token 仅保存在前端内存，默认 15 分钟；refresh token 为随机值，数据库仅保存 SHA256，Cookie 使用 HttpOnly、SameSite=Strict、限定路径。数据库会话绝对有效期默认 7 天，刷新不会延长；退出、改密或禁用用户后旧 access token 也会被拒绝。首次页面加载通过 refresh 恢复状态；并发刷新只允许一个 CAS 成功。前端合并当前标签页刷新，跨标签页身份变化不会重放旧用户请求。
 
-| 环境变量 | 默认值 | 用途 |
-|---|---|---|
-| `OLIXOPS_MODE` | `debug` | `debug` 为彩色文本日志，`release` 为 JSON 日志 |
-| `OLIXOPS_HOST` | `127.0.0.1` | `main.py` 启动入口监听地址 |
-| `OLIXOPS_PORT` | `8000` | `main.py` 启动入口端口 |
-| `OLIXOPS_DOCS_ENABLED` | `false` | 显式开启 `/docs` 与 `/openapi.json`，仅供开发使用 |
+认证写接口要求 `Content-Type: application/json`、`X-Olixops-Client: web` 和受信任 Origin（请求携带时校验）；不开放 CORS，浏览器同源访问。生产部署启用 HTTPS、Secure Cookie 并配置准确的 Origin。密码错误使用相同 401，不区分用户不存在；用户名/IP 的失败次数保存在数据库，默认 5 次失败后退避 30 秒，重复失败最长 600 秒。
 
-容器默认使用 release 模式并关闭文档；`.env.example` 是开启开发文档的本地示例。真实 `.env`、凭据和 Pulumi 运行产物均不提交。
+### 运行配置
+
+以 `app/core/config.py` 与 `.env.example` 为准，环境变量统一 `OLIXOPS_` 前缀：
+
+| 配置 | 默认值/用途 |
+|---|---|
+| `MODE` / `DOCS_ENABLED` | debug 日志 / 默认关闭文档；容器 release 模式 |
+| `DATABASE_URL` | `postgresql+psycopg://...`；开发端口 15432，测试可使用 SQLite |
+| `REDIS_URL` | 未配置则禁用；本地配置 `redis://127.0.0.1:16379/0` |
+| `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | `runtime/keys/jwt-private.pem` / `jwt-public.pem` |
+| `JWT_PUBLIC_KEY` | 可选 PEM 或 base64 DER 公钥文本，必须与本地私钥配对 |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `olixops-agent` / `olixops-agent-web` |
+| `ACCESS_TOKEN_SECONDS` / `REFRESH_TOKEN_SECONDS` | 900 / 604800 |
+| `REFRESH_COOKIE_SECURE` | 本地 HTTP 为 false；生产 HTTPS 必须设 true |
+| `BROWSER_ORIGINS` | 精确 Origin JSON 列表，开发默认 localhost/127.0.0.1 的 5173/5175 |
+| `PULUMI_CLI` | 默认 `pulumi`；初始化脚本可指向项目 `runtime/tools/pulumi/pulumi` |
+
+健康检查不返回内部连接信息。缺少密钥或依赖时认证拒绝服务，进程健康检查仍可用。数据库迁移显式执行，不在 API 启动或请求中自动建表。
 
 ### Pulumi 本地基础环境
 
-2026-09-09 已在 Windows 开发机安装 uv 0.12.10、Pulumi CLI 3.261.0，项目通过 `uv add` 加入 `pulumi==3.261.0` 并更新锁文件；Python 仍为 3.14.7。Automation API 包含在 `pulumi` SDK 中，无需额外安装独立包。
-
-CLI 的标准用户安装目录为 `%USERPROFILE%\.pulumi\bin`，uv 为 `%USERPROFILE%\.local\bin`，已加入该开发机的用户 PATH；已打开的终端或 IDE 可能需要重启才能读取新 PATH。新环境需自行安装 CLI，再使用 `uv sync --locked` 同步 Python 依赖。基本检查命令：
+项目固定 CLI/SDK `3.261.0`；`scripts/install_pulumi.py` 从官方来源下载并校验 SHA256，安装至项目忽略的 `runtime/tools/`，不修改全局登录或 PATH。详细模块和输出约束见 [Pulumi 基础集成](design/pulumi-foundation.md)。
 
 ```bash
-uv --version
-pulumi version
-uv run python -c "from importlib.metadata import version; from pulumi import automation; print(version('pulumi'))"
+uv run python -m app.workers.pulumi self-test --cli runtime/tools/pulumi/pulumi --timeout 120
 ```
 
-本次使用隔离的临时工作目录、`pulumi_home` 和本地文件 backend，验证常量输出程序的 `preview → up → outputs → refresh → 再次 preview → destroy`、引擎事件及 stack 清理；未使用任何目标 Provider 或云资源，也未修改用户默认 backend。Windows 本地 backend 路径使用 `file://` 加正斜线格式的绝对路径（例如 `file://E:/path/to/state`）；本次 CLI 对 `Path.as_uri()` 生成的 `file:///E:/...` 出现盘符重复，已用前述格式通过验证。
-
-目标 Provider、真实凭据、远程 backend 和 Worker 镜像仍待接入。现有 Dockerfile 是 API 入口，未安装 Pulumi CLI；本机验证不代表容器或真实部署已经可用。
+Windows 使用 `pulumi.exe`。Worker 以独立子进程执行 `preview → up → outputs → refresh → 无变更 preview → destroy → remove_stack`，返回脱敏 JSON。只验证固定常量程序，无目标 Provider 或云资源；异常不会被描述为已回滚。已验证 macOS 引擎及 POSIX 超时路径，Windows 新 Worker 的终止路径待验证；历史 Windows SDK 验证记录见 todo。
 
 ### 质量检查与容器
-
-质量检查：
 
 ```bash
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy app tests main.py
+uv run mypy app tests scripts main.py
 uv run pytest
+uv run alembic check
 ```
 
-容器使用多阶段构建、锁定依赖和非 root 运行用户，内置健康检查。当前 Compose 仅启动已实现的 API：
+真实 PostgreSQL/Redis 测试分别由 `OLIXOPS_TEST_DATABASE_URL` / `OLIXOPS_TEST_REDIS_URL` 显式启用，数据库需先迁移；Pulumi 引擎测试由 `OLIXOPS_RUN_PULUMI_TEST=1` 与 `OLIXOPS_PULUMI_CLI` 启用。测试只操作自身随机命名记录和临时 stack，不代表业务部署成功。
+
+Dockerfile 包含固定 Pulumi CLI、Python 依赖及迁移，以非 root 用户运行。Compose 默认仅启动数据服务；完整 API/Web 使用 app profile：
 
 ```bash
-docker compose up --build -d
-docker compose ps
-docker compose logs -f api
+docker compose --profile app build
+docker compose up -d --wait postgres redis
+docker compose run --rm api python -m app.cli init-keys
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api python -m app.cli create-user --username admin --name 管理员 --admin
+docker compose --profile app up -d
 ```
 
-本地端口绑定 `127.0.0.1:8000`。本轮 Compose 配置校验及 GitHub CI 镜像构建通过；本地镜像构建受 Docker Hub 基础镜像元数据访问超时阻塞，容器运行尚未验证，证据见 [todo.md](todo.md)。后续实现 Worker 时增加独立进程入口与服务；运行产物、日志和数据库状态使用明确的外部存储，Kubernetes 增加就绪与存活探针。
+Web 地址 `http://127.0.0.1:8080`，Nginx 同源反代 API；容器密钥保存在独立 `api-runtime` 卷，与宿主机密钥分开。本地 DB/Redis 端口只绑定回环地址，数据卷持久保存；普通 `docker compose down` 不删除数据卷。临时引擎自测可运行 `docker compose run --rm worker-check`。
 
-当前测试覆盖健康响应、404/405/401/422/500 统一错误、请求 ID 生成与透传、认证错误响应头保留、并发上下文隔离及异常清理、文档开关、日志格式。真实 MCP、Pulumi 和云部署尚未验证，详情见 [todo.md](todo.md)。
+本机数据服务与浏览器联调已通过；API/Web 镜像构建受 Docker Hub token 访问超时影响，远程 CI 的实际结果及容器验收见 [todo.md](todo.md)。
 
 ## 官方参考
 

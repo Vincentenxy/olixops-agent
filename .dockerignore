@@ -29,3 +29,8 @@ runtime
 logs
 *.log
 .DS_Store
+.pulumi
+Pulumi.*.yaml
+Pulumi.*.yml
+!Pulumi.*.example.yaml
+!Pulumi.*.example.yml

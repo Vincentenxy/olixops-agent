@@ -1,82 +1,67 @@
-# 后端待办与问题记录
+# 后端待办与验证记录
 
-更新日期：2026-09-09。状态以当前代码和实际验证结果为准；前端事项见独立仓库 `olixops-agent-web/todo.md`。
+更新日期：2026-09-09。本轮范围是可运行的非业务基础能力，应用部署业务等待后续设计。
 
-## 本轮范围
+## 本轮完成
 
-- [x] 保留从原项目迁移的接口、JWT、审计字段和日志规范，更新为 Python / FastAPI / uv 开发约定。
-- [x] 初始化可运行的 FastAPI 后端、公开健康检查和统一 HTTP 响应。
-- [x] 实现请求 ID 生成与透传、并发请求上下文隔离、debug / release 日志。
-- [x] 建立 CPython 3.14 环境、uv 锁文件、Ruff / mypy / pytest 入口。
-- [x] 提供多阶段、非 root 的 API Dockerfile 与 Compose 启动配置。
-- [x] 通过 README / AGENTS.md 明确开发规范与后续工作入口。
-- [x] 将 IaC 目标选型从 Terraform 调整为 Pulumi Python + Automation API，补充 [IaC 选型记录](design/iac-selection.md)，并按 Pulumi 语义更新 Worker、预览授权、stack/state 与恢复要求；仅完成选型和文档，尚未接入执行能力。
-- [x] 安装 Windows 本地 uv 0.12.10、Pulumi CLI 3.261.0，加入并锁定 `pulumi==3.261.0`；在 CPython 3.14.7 下完成无目标 Provider、无云资源的 Automation API 基础验证，业务执行能力仍待接入。
+- [x] PostgreSQL 异步连接、连接超时、SQLAlchemy session 生命周期与 Alembic 显式迁移；三张认证表及审计字段见 [数据库设计](design/database.md)。
+- [x] Redis 异步连接池、应用命名空间、明确 TTL、连接检查及关闭释放；会话有效性仍以 PostgreSQL 为准。
+- [x] 本地用户 CLI、3072 位 RSA 密钥初始化、Argon2 密码、固定 RS256 JWT、claims 与数据库会话校验。
+- [x] 登录、刷新、退出、当前用户、修改密码；HttpOnly Strict Cookie、JSON/自定义请求头/Origin 校验、用户名/IP 持久化失败退避。
+- [x] Refresh token 原子轮换；改密撤销全部会话，退出或用户禁用后旧 access token 拒绝访问。
+- [x] 公共健康与就绪探针、受保护的数据库/Redis/认证/Pulumi 实际状态 API。
+- [x] 统一结构化日志、请求/用户追踪、请求 ID 校验、配置/凭据形式脱敏、异常类型和堆栈位置记录。
+- [x] 固定 Pulumi CLI/SDK 3.261.0、官方校验和安装脚本、隔离 Automation API 适配和独立 Worker 自测，见 [Pulumi 基础集成](design/pulumi-foundation.md)。
+- [x] 本地生成配置、独立 PostgreSQL/Redis 数据卷及端口、API/Web Compose profile、容器 CLI/迁移/密钥卷配置。
+- [x] React 登录、刷新恢复、退出、账户页面和基础状态页真实联调；更新两端接口文档。
 
-## 后续功能
+## 本轮验证
 
-| 状态 | 事项 | 当前缺口与影响 | 完成条件 |
-|---|---|---|---|
-| 待实现 | JWT 认证与用户上下文 | 尚未提供公钥、固定算法配置与必需 claims 契约；当前仅公开 health，无受保护业务 API | 实现 README 验签和用户字段约定，覆盖缺失、无效、过期 token 和权限拒绝 |
-| 待设计 | 部署目标与应用入口 | 首版云平台 / Kubernetes 目标、代码来源和镜像构建方式尚未明确，无法确定真实部署输入 | 确认一种应用类型和一个目标环境，记录部署规格及接口 |
-| 待实现 | PostgreSQL 与 Redis | 当前无数据模型、迁移、持久化任务或缓存，重启不保留业务数据 | 落实 `design/database.md`、审计字段、版本迁移和基础集成测试 |
-| 待实现 | LangGraph 工作流 | 当前 API 骨架未接模型或工作流，无自然语言部署功能 | 确认模型配置，建立结构化部署规格、状态流转与 checkpoint 恢复测试 |
-| 待接入 | MCP 查询 | 尚未提供实际 MCP 地址、传输方式、工具 schema 和认证方式 | 接入真实查询服务并验证超时、失败、凭据透传及重试边界 |
-| 部分完成 | Pulumi 运行时与目标 Provider | 本机 CLI / SDK 3.261.0 已通过 CPython 3.14.7 基础验证；目标 Provider、插件和 Worker 镜像组合尚未验证 | 固定 Worker 镜像、CLI、SDK、组件与插件版本，验证真实资源创建/更新/导入/删除及依赖兼容性 |
-| 待实现 | Pulumi Worker | 当前未执行 Pulumi，也未生成任何云资源 | 通过 Automation API 实现隔离运行、preview/up、结构化事件、超时取消、部分失败核对和重启恢复；业务任务不在 API 请求内执行 |
-| 待设计 | 部署规格与组件库 | 尚无类型明确的 DeploymentSpec、受控组件或稳定 stack 映射 | 确认一种应用和目标环境，版本化组件及输入契约，按资源归属划分 stack，禁止模型输出直接作为任意程序执行 |
-| 待验证 | 预览授权与计划约束 | Pulumi update plan 与 Terraform saved plan 语义不同，计划格式及未知值限制尚未验证 | 绑定规格、程序、依赖、配置、stack/state 和预览摘要；验证变化后重新授权、执行中计划偏差、部分成功及恢复，再开放严格审核环境 |
-| 待配置 | Pulumi 远程状态与密钥 | Pulumi Cloud / DIY backend、secrets provider、目标凭据及同 stack 并发规则未明确 | 选定 backend 与密钥管理方式，验证状态锁、串行调度、备份恢复、访问控制和脱敏，避免盲目重试 up |
-| 待实现 | 任务 API 与事件流 | 当前只有 health；前端不能提交、取消、恢复或订阅部署任务 | 先定义任务模型及接口，再实现持久化任务、授权、日志事件与重连行为 |
-| 待实现 | 工具输出与凭据脱敏 | 当前结构化日志仅选择明确上下文字段，未来异常文本和 Pulumi / MCP 原始输出仍需专项处理 | 显式关闭 Automation API 的 show_secrets，按白名单映射结果和事件，覆盖 secret 派生值、配置、异常与日志泄露测试 |
-| 待验证 | 真实端到端部署 | 当前单元 / HTTP 测试不代表 MCP、Pulumi 或云部署成功 | 在授权目标与有效测试凭据下完成真实 preview/up、健康检查、漂移核对及资源清理，记录证据 |
-| 待实现 | 生产运行能力 | 当前 health 仅表示 API 进程存活，尚无依赖 readiness、指标、Worker 进程或 Kubernetes 配置 | 按实际组件补充健康检查、可观测性、资源限制和部署清单 |
+- `uv sync --locked`、Ruff lint/format、strict mypy（含脚本）全部通过。
+- **70 个 pytest 测试通过，无跳过**；启用了实际 PostgreSQL、Redis 与 Pulumi 引擎。保留 1 条 Starlette/AnyIO 上游弃用警告，无本轮失败。
+- PostgreSQL 15：真实迁移和 `alembic check` 通过，表结构与模型一致；并发 refresh 只允许一个请求成功。临时 SQLite 另测迁移升降级。
+- Redis 7：连接、读写、TTL 到期与删除均在真实服务通过。
+- Pulumi：固定常量及 secret 测试输出程序的 preview → up → outputs → refresh → 无变更 preview → destroy → remove_stack 通过，临时状态清理完成；未使用云 Provider/资源。
+- HTTP 经真实 Vite 代理：登录、状态、错误旧密码、改密、全部会话失效、新旧密码验证、退出、旧 token 和 refresh 拒绝通过。
+- 浏览器：错误登录、成功登录、刷新恢复、四项基础服务正常、改密后失效与新密码登录、退出及刷新后保护通过；账户/登录页面 1280×720 与 390×844 无页面横向溢出，控制台无 warn/error。
+- `docker compose --profile app config --quiet` 通过，PostgreSQL/Redis 容器实际健康。本地 API/Web 构建仍在 Docker Hub 获取 Python 镜像授权 token 时网络超时，未进入应用构建阶段；API/Web 容器启动和 Nginx Cookie 联调不能视为本地完成。
+- [ ] 本轮推送后确认 GitHub CI：新增真实数据库/缓存检查、API 容器登录自测和 Pulumi Worker 容器自测。
 
 ## 已发现问题与处理
 
-| 问题 | 处理及当前状态 |
+| 问题 | 处理与当前状态 |
 |---|---|
-| 初始项目使用 Python 3.9.6，入口为 PyCharm 示例，Dockerfile 为空 | 已替换为 FastAPI 骨架；通过 uv 同步 CPython 3.14.7，项目版本约束、`.python-version` 与 Dockerfile 已统一 |
-| 框架默认 404 / 405 / 422 与未处理 500 不符合已有响应约定 | 已集中处理为 `{code,msg,data}`，保留实际 HTTP 状态；401 保留 `WWW-Authenticate`，405 保留 `Allow` |
-| 未处理 500 的响应位于 Starlette 请求中间件外层，可能丢失请求 ID | 异常处理从请求状态取回 ID 并写入响应头和错误日志；单独覆盖自动生成和透传用例 |
-| CPython 3.14 中 422 标准短语为 `Unprocessable Content` | 响应和 OpenAPI 统一动态读取 `HTTPStatus(...).phrase`；前端应按状态 / code 判断错误 |
-| 首次开发依赖下载发生 PyPI 连接重置、传输缓慢 | 使用清华 PyPI 镜像取得与官方 `uv.lock` SHA256 一致的 Ruff / mypy wheel，完成本地安装；项目仍锁定官方 PyPI 来源，`uv sync --locked` 已通过 |
-| Starlette 测试客户端使用 AnyIO 已弃用的 `anyio.abc.BlockingPortal` 别名 | 已按当前 Starlette 要求使用 `httpx2`；仍有 1 条上游 AnyIO 弃用警告，14 个测试通过。后续依赖更新时复核，当前未修改第三方代码或屏蔽警告 |
-| 本地 Docker Hub 基础镜像元数据访问超时 | Docker 服务本身可用，Compose 配置校验通过；GitHub CI 已成功构建镜像，本地构建和容器启动验收仍未完成 |
-| 初始规范描述的是完整目标架构，易被误解为已实现 | README 和本文件标明当前唯一业务接口及未接入组件；没有占位部署接口或假执行结果 |
-| 原 IaC 文档按 Terraform CLI 和保存计划执行设计 | 已改选 Pulumi，重写为 Python Automation API、preview/up 和稳定 stack；说明 CLI 依赖、update plan 逐步校验及部分失败边界。仓库尚无 Terraform 资源或 state，此次不涉及生产资源迁移 |
-| 本机终端找不到 uv 和 Pulumi CLI | 已安装到用户目录并登记用户 PATH；已打开的终端/IDE 需重新加载环境。本轮通过绝对工具路径执行并验证版本 |
-| Windows 本地 backend 使用 `file:///E:/...` 时出现盘符重复 | Pulumi CLI 3.261.0 的本地验证改用 `file://` 加 `Path.as_posix()`，即 `file://E:/...`，完整基础流程通过；临时 stack/state 已清理 |
+| 本机其他项目占用 5432/6379 | 本项目独立使用 15432/16379 和 olixops-agent 数据卷，不复用或修改其他项目实例 |
+| Refresh 并发与 SQLite 时区比较 | 使用数据库 CAS 并禁用 ORM 自动同步比较；SQLite 与真实 PostgreSQL 并发用例均通过 |
+| 另一个标签页切换用户后旧请求可能以新身份重放 | 前端刷新绑定原 user_id，变化时清身份、缓存、草稿并拒绝原请求和迟到数据 |
+| Cookie 与 Bearer 属于不同会话时退出撤销错误对象 | 后端优先有效 Bearer 的 user/sid；无可用 Bearer 时回退 Cookie，回归测试验证不会撤销另一个会话 |
+| 公共 logout 携带无效/过期 Bearer | 按可选凭据处理并回退 Cookie，维持幂等；受保护接口仍严格 401 |
+| Pulumi CLI 依赖系统用户信息且可能初始化全局状态 | 保留原 HOME/USER，诊断和执行分别设置隔离 PULUMI_HOME；无全局 login 或云凭据继承 |
+| 日志异常文本可能带外部凭据 | 保留异常类型及堆栈位置，省略任意异常消息/源码行/局部变量；普通日志仍须明确选择无敏感字段 |
+| Docker Hub 本地授权 token 超时 | 使用现有受控数据镜像完成真实 PostgreSQL/Redis；应用镜像与容器以远程 CI 实际结果补充 |
+| 初始管理员凭据 | 本地 admin 为随机密码，仅保存在 Git 忽略的 runtime/local-login.json；用户可改密后移除交接文件，仓库无默认密码 |
 
-## 验证记录
+## 后续平台事项
 
-以下为 API 骨架阶段已有验证记录；不代表已经验证 Pulumi。外部镜像仓库访问问题与功能待办分别记录。
+| 事项 | 当前边界与完成条件 |
+|---|---|
+| 生产认证与账号管理 | 当前本地 CLI 创建账户；SSO、账号找回、禁用/角色管理 UI、资源级 RBAC 按后续需求设计 |
+| 会话维护与密钥轮换 | 增加过期会话和历史限流记录清理、RSA 密钥轮换及旧钥过渡；当前密钥初始化不会覆盖现有值 |
+| 多标签页与高级限流 | 当前已有身份变化拒绝与后端原子刷新；跨标签互斥/退出广播、可信代理和多实例流量策略待设计 |
+| Windows Worker | 历史 Windows SDK 常量程序已验证；新 Worker 的 taskkill 子进程树终止分支需 Windows CI 验证 |
+| 生产运行 | 明确 HTTPS、Secure Cookie、精确 Origin、可信代理、secret 注入、数据备份、资源限制、监控与 Kubernetes 清单 |
 
-- [x] `uv sync --locked`
-- [x] `uv run ruff check .`
-- [x] `uv run ruff format --check .`
-- [x] `uv run mypy app tests main.py`：14 个源文件通过 strict 类型检查。
-- [x] `uv run pytest`：14 passed，1 条上游弃用警告（见“已发现问题与处理”），无失败。
-- [x] `docker compose config --quiet` 配置校验通过。
-- [x] GitHub CI 中 API 镜像构建通过；本地构建在 Docker Hub 拉取 `python:3.14.7-slim` 元数据时出现 `context deadline exceeded`，未执行到应用构建阶段。
-- [ ] 容器启动、非 root 用户及容器健康检查：本地镜像源网络恢复后重新构建并验证。镜像构建通过不等于容器运行验收完成。
-- [x] 前端开发代理调用实际 API 的浏览器联调：后端未启动时展示连接失败，启动后健康检查成功。
-- [x] [Backend CI #1](https://github.com/Vincentenxy/olixops-agent/actions/runs/34228792131) 对提交 `3ee3382` 执行成功：依赖安装、Ruff、strict mypy、pytest 与 Docker 镜像构建全部通过。
+## 等待业务设计
 
-## Pulumi 选型调整验证（2026-09-08）
+- Agent 模型与 LangGraph 状态/恢复、MCP 查询地址/schema/认证。
+- 首个应用类型、镜像构建与版本标识、目标平台和环境权限。
+- DeploymentSpec、受控组件库、稳定 Stack 归属与 Provider/插件版本。
+- 持久业务任务、事件流、同 Stack 跨进程调度、重试/取消/部分失败核对。
+- Pulumi 生产远程 backend、secrets provider、凭据作用域及备份恢复。
+- preview 摘要与审核绑定、update plan 限制、up 前重新核对、真实资源验证及清理。
 
-- [x] 核对 Pulumi / HashiCorp 官方文档和许可证，复核 Automation API 的 CLI 依赖、update plan 语义、DIY backend 锁与历史、secret 输出边界以及内部使用许可；来源见选型记录。
-- [x] 同步后端 README / todo / 项目描述，以及前端 README / todo / 接口开发文档；新增选型记录。保留原验证记录的历史含义，未将健康检查结果描述为 Pulumi 验证结果。
-- [x] 两个仓库的 `git diff --check` 通过；6 份文档的 27 个本地链接/锚点及代码围栏检查通过。
-- [x] `pyproject.toml` 解析通过，确认仅修改项目描述，依赖声明和 `uv.lock` 未改变；9 项 Git 忽略规则检查确认 Pulumi 缓存、实际 stack 配置和运行产物被忽略，程序、项目配置与无凭据示例可提交。
-- [ ] Pulumi 安装与真实 preview/up/refresh/destroy：本次只调整文档、描述及忽略规则，未接入运行时，也未运行应用测试、构建或资源操作。
+现有 Worker 只执行隔离的固定基础自测，不能替代生产任务调度，也不能代表真实部署成功。
 
-## Pulumi 基础安装验证（2026-09-09）
+## 历史基线
 
-- [x] 从官方发布地址取得 uv 0.12.10 和 Pulumi CLI 3.261.0，安装到当前用户目录；两者版本命令通过，目录已加入用户 PATH。
-- [x] `uv add pulumi==3.261.0`、`uv sync --locked` 通过；SDK 与 grpcio 等传递依赖在 CPython 3.14.7 环境安装成功，依赖锁更新。
-- [x] Automation API 使用隔离工作目录、`pulumi_home`、临时文件 backend 和仅导出常量的 inline 程序，验证 preview、结构化引擎事件、up、outputs、refresh 和再次预览无变更；随后 destroy、删除临时 stack 并清理测试状态。未声明目标 Provider 或云资源，未调用全局 login。
-- [x] Ruff 检查和格式检查通过；strict mypy 的 14 个源文件通过；pytest 14 passed，保留原有 1 条上游 AnyIO 弃用警告。
-- [x] `uv lock --check --offline`、Git 差异检查及文档链接检查通过；锁文件新增 16 个包，原有包版本未改变；临时基础验证目录已清理。
-- [ ] 目标 Provider / 插件、业务 Worker、生产远程 backend 及真实云/Kubernetes 部署：未接入，仍需确认首个部署目标及凭据。
-- [ ] 本轮未构建或运行 Docker 镜像；现有镜像未安装 Pulumi CLI，Windows 本机验证不代表 Worker 容器验收。
+2026-09-08 初始化 FastAPI/React，原后端 14 项测试及前端基础 CI/镜像构建通过；随后 IaC 从 Terraform 改选 Pulumi。2026-09-09 Windows 开发环境已安装 uv 0.12.10、CLI/SDK 3.261.0 并验证常量程序闭环。选型依据及历史兼容结论保留在 [IaC 选型记录](design/iac-selection.md)，本轮新增能力以当前代码和上方验证为准。

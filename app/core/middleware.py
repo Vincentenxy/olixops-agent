@@ -1,6 +1,7 @@
 """Pure ASGI middleware keeps trace context intact across async requests."""
 
 import logging
+import re
 from time import perf_counter
 from uuid import uuid4
 
@@ -21,7 +22,12 @@ class RequestContextMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_id = Headers(scope=scope).get("X-Request-Id") or uuid4().hex
+        supplied_id = Headers(scope=scope).get("X-Request-Id", "")
+        request_id = (
+            supplied_id
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", supplied_id)
+            else uuid4().hex
+        )
         scope.setdefault("state", {})["trace_id"] = request_id
         token = trace_id.set(request_id)
         started = perf_counter()
@@ -46,6 +52,7 @@ class RequestContextMiddleware:
                         "status_code": status_code,
                         "duration_ms": round((perf_counter() - started) * 1000, 3),
                         "client_ip": scope["client"][0] if scope.get("client") else None,
+                        "user_id": scope.get("state", {}).get("user_id"),
                     },
                 )
             finally:
