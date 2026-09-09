@@ -302,7 +302,7 @@ docker compose --profile app up -d
 
 Web 地址 `http://127.0.0.1:8080`，Nginx 同源反代 API；容器密钥保存在独立 `api-runtime` 卷，与宿主机密钥分开。本地 DB/Redis 端口只绑定回环地址，数据卷持久保存；普通 `docker compose down` 不删除数据卷。临时引擎自测可运行 `docker compose run --rm worker-check`。
 
-本机数据服务与浏览器联调已通过；API/Web 镜像构建受 Docker Hub token 访问超时影响，远程 CI 的实际结果及容器验收见 [todo.md](todo.md)。
+本机数据服务与浏览器联调已通过；本地应用镜像构建受 Docker Hub token 访问超时影响。后端 GitHub CI 已完成镜像构建、API 容器登录和 Pulumi Worker 容器验证，实际结果见 [todo.md](todo.md)。
 
 ## 官方参考
 

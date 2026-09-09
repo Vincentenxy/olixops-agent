@@ -24,8 +24,8 @@
 - Pulumi：固定常量及 secret 测试输出程序的 preview → up → outputs → refresh → 无变更 preview → destroy → remove_stack 通过，临时状态清理完成；未使用云 Provider/资源。
 - HTTP 经真实 Vite 代理：登录、状态、错误旧密码、改密、全部会话失效、新旧密码验证、退出、旧 token 和 refresh 拒绝通过。
 - 浏览器：错误登录、成功登录、刷新恢复、四项基础服务正常、改密后失效与新密码登录、退出及刷新后保护通过；账户/登录页面 1280×720 与 390×844 无页面横向溢出，控制台无 warn/error。
-- `docker compose --profile app config --quiet` 通过，PostgreSQL/Redis 容器实际健康。本地 API/Web 构建仍在 Docker Hub 获取 Python 镜像授权 token 时网络超时，未进入应用构建阶段；API/Web 容器启动和 Nginx Cookie 联调不能视为本地完成。
-- [ ] 本轮推送后确认 GitHub CI：新增真实数据库/缓存检查、API 容器登录自测和 Pulumi Worker 容器自测。
+- `docker compose --profile app config --quiet` 通过，PostgreSQL/Redis 容器实际健康。本地完整应用构建在 Docker Hub 获取 Python 镜像授权 token 时网络超时；另用缓存 Nginx 1.27.5 镜像加载前端实际模板，代理宿主 API，已验证登录、身份/状态、Cookie 刷新、退出和撤销。该结果验证真实代理集成，完整生产镜像验收以 CI 为准。
+- [x] [Backend CI](https://github.com/Vincentenxy/olixops-agent/actions/runs/34307177818) 在提交 `101cb5a` 上全部通过：真实 PostgreSQL/Redis 测试、迁移检查、应用镜像构建、非 root API 容器登录/刷新/退出验证，以及 Pulumi Worker 容器完整自测。
 
 ## 已发现问题与处理
 
