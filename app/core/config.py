@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     database_timeout_seconds: float = Field(default=3, gt=0, le=30)
     redis_url: SecretStr | None = None
     pulumi_cli: str = "pulumi"
+    agent_base_url: str = "https://api.openai.com/v1"
+    agent_model: str = Field(default="", max_length=128)
+    agent_api_key: SecretStr | None = None
+    agent_response_format: Literal["json_object", "json_schema"] = "json_object"
+    agent_model_timeout_seconds: float = Field(default=45, ge=1, le=120)
+    agent_turn_timeout_seconds: float = Field(default=90, ge=5, le=180)
+    agent_max_output_tokens: int = Field(default=4096, ge=256, le=16384)
     jwt_private_key_path: Path = Path("runtime/keys/jwt-private.pem")
     jwt_public_key_path: Path = Path("runtime/keys/jwt-public.pem")
     jwt_public_key: SecretStr | None = None
@@ -36,6 +43,23 @@ class Settings(BaseSettings):
     ]
     login_failure_limit: int = Field(default=5, ge=2, le=20)
     login_lock_seconds: int = Field(default=30, ge=1, le=600)
+
+    @field_validator("agent_base_url")
+    @classmethod
+    def validate_agent_url(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Agent endpoint must be an HTTP(S) base URL without credentials")
+        return value.rstrip("/")
 
     @field_validator("database_url")
     @classmethod

@@ -9,11 +9,14 @@ from uuid import uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from psycopg import Error as PsycopgError
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.agents.runtime import setup_checkpoints
 from app.core.config import Settings
 from app.core.database import Database
+from app.core.event_loop import run_async
 from app.core.security import password_hasher
 from app.models.auth import LocalUser
 from app.repositories.auth import AuthRepository
@@ -83,6 +86,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init-keys", help="Generate RSA keys without overwriting existing files")
+    commands.add_parser("init-agent", help="Explicitly migrate LangGraph PostgreSQL checkpoints")
     user = commands.add_parser(
         "create-user", help="Create a local user without changing existing users"
     )
@@ -94,14 +98,17 @@ def main() -> int:
         settings = Settings()
         if args.command == "init-keys":
             init_keys(settings)
+        elif args.command == "init-agent":
+            run_async(setup_checkpoints(settings))
+            print("LangGraph checkpoint migrations completed.")
         else:
             password = os.environ.get("OLIXOPS_BOOTSTRAP_PASSWORD")
             if password is None:
                 password = getpass.getpass("New user password (12–128 characters): ")
                 if password != getpass.getpass("Confirm password: "):
                     raise ValueError("Passwords do not match")
-            asyncio.run(create_user(settings, args.username, args.name, password, admin=args.admin))
-    except OSError, ValueError, ValidationError, SQLAlchemyError:
+            run_async(create_user(settings, args.username, args.name, password, admin=args.admin))
+    except OSError, ValueError, ValidationError, SQLAlchemyError, PsycopgError:
         # Exception messages can contain the DSN or credential input; never print them.
         print(
             "Setup failed. Check configuration, key paths, input and database migrations.",

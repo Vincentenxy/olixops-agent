@@ -1,8 +1,28 @@
 # 后端待办与验证记录
 
-更新日期：2026-09-09。本轮范围是可运行的非业务基础能力，应用部署业务等待后续设计。
+更新日期：2026-09-10。本轮接通 LangGraph 需求分析和持久方案会话；实际集群与资源部署仍等待接入。
 
-## 本轮完成
+## 2026-09-10 LangGraph 完成
+
+- [x] uv 引入并锁定 LangGraph 1.2.11、PostgreSQL checkpointer 3.1.2、OpenAI SDK 2.54.0；Python 3.14 下可导入、编译并运行真实图。
+- [x] OpenAI 兼容网关配置、异步 JSON 结构抽取、Pydantic 部署规格校验；支持 Redis/PostgreSQL 单实例方案，未知参数追问，不支持的需求要求调整。
+- [x] LangGraph interrupt/resume、跨运行实例 checkpoint 恢复、pending 节点重试、相同轮次回收；普通 JSON state、限制反序列化类型、关闭外部 tracing。
+- [x] 两张带审计字段的业务表与 Alembic 迁移；官方 checkpoint 独立 agent_graph schema，通过 `init-agent` 显式迁移。
+- [x] 六个受保护 API、用户会话隔离、请求幂等、revision 冲突、5 个排队任务/20 轮会话限制；后台消费者提交即返回，轮次行锁保护跨实例领取。
+- [x] Windows Selector 运行入口、CLI/迁移一致事件循环；模型异常安全映射、SDK 正文日志关闭、trace_id 传递。
+- [x] 前端工作台分析入口、任务列表/详情、补充需求与失败重试、方案规格与尚未部署状态。前端检查及浏览器结果见对应仓库 todo。
+- [x] 更新 README、数据库设计、[LangGraph 接入文档](design/langgraph.md)、环境变量示例及 Compose/CI 迁移步骤。
+
+## 2026-09-10 验证
+
+- `uv sync --locked`、Ruff lint/format、strict mypy（58 个源文件）通过；实际 OpenAPI 生成包含全部 6 个 Agent 路由。
+- **88 个 pytest 通过，6 个跳过**；保留 1 条现有 Starlette/AnyIO 弃用警告。覆盖真实 LangGraph、SQLite checkpoint、模型 HTTP 协议替身、API/Worker/重启恢复，以及既有认证和错误契约。
+- SQLite 迁移升降级、`alembic check` 与 PostgreSQL 离线 DDL 生成通过。模型 HTTP 错误、拒绝、截断、非法 JSON、额外代码字段、非法名称和容量均不被当成有效方案；轮次超时取消模型后仍可从 checkpoint 重试，无重复输入。
+- 本机 Docker 引擎不可用，启动服务尝试失败；没有创建或修改实际 PostgreSQL/Redis。3 个 PostgreSQL 测试（其中 2 个为新增 checkpoint/并发领取测试）、1 个 Redis 测试未启用；另有 Windows 不适用的 POSIX 测试和未启用的真实 Pulumi 引擎测试跳过。CI 已加入 checkpoint 显式初始化，本轮尚未运行远程 CI。
+- 未提供实际网关地址、模型名及 key，因此模型层使用 HTTP 替身验证，不能代表实际模型理解质量或网关联通。没有连接 POC 集群，没有创建 Redis/PostgreSQL 资源。
+- 前端 60 项测试及完整检查通过。经 Vite 代理真实登录/API/Worker/LangGraph/SQLite checkpoint 完成创建、追问、补充、两服务规格、列表和刷新恢复；浏览器默认 811px、1280×720 双栏和 390×844 布局通过，无页面横向溢出或控制台 warn/error。模型为临时替身，验收账号退出、临时服务停止，未将替身接入正常配置。
+
+## 2026-09-09 基础能力完成
 
 - [x] PostgreSQL 异步连接、连接超时、SQLAlchemy session 生命周期与 Alembic 显式迁移；三张认证表及审计字段见 [数据库设计](design/database.md)。
 - [x] Redis 异步连接池、应用命名空间、明确 TTL、连接检查及关闭释放；会话有效性仍以 PostgreSQL 为准。
@@ -15,7 +35,7 @@
 - [x] 本地生成配置、独立 PostgreSQL/Redis 数据卷及端口、API/Web Compose profile、容器 CLI/迁移/密钥卷配置。
 - [x] React 登录、刷新恢复、退出、账户页面和基础状态页真实联调；更新两端接口文档。
 
-## 本轮验证
+## 2026-09-09 历史验证
 
 - `uv sync --locked`、Ruff lint/format、strict mypy（含脚本）全部通过。
 - **70 个 pytest 测试通过，无跳过**；启用了实际 PostgreSQL、Redis 与 Pulumi 引擎。保留 1 条 Starlette/AnyIO 上游弃用警告，无本轮失败。
@@ -53,14 +73,14 @@
 
 ## 等待业务设计
 
-- Agent 模型与 LangGraph 状态/恢复、MCP 查询地址/schema/认证。
+- 配置真实模型网关并验证输出质量/超时；MCP 查询地址/schema/认证与集群库存核验。LangGraph 状态、追问和恢复已实现。
 - 首个应用类型、镜像构建与版本标识、目标平台和环境权限。
-- DeploymentSpec、受控组件库、稳定 Stack 归属与 Provider/插件版本。
-- 持久业务任务、事件流、同 Stack 跨进程调度、重试/取消/部分失败核对。
+- DeploymentSpec 已有 Redis/PostgreSQL 方案结构；受控组件库、实际集群校验、稳定 Stack 归属与 Provider/插件版本待接入。
+- 已有持久 Agent 分析任务与重试；部署任务事件流、同 Stack 跨进程调度、取消/部分失败核对仍待接入。
 - Pulumi 生产远程 backend、secrets provider、凭据作用域及备份恢复。
 - preview 摘要与审核绑定、update plan 限制、up 前重新核对、真实资源验证及清理。
 
-现有 Worker 只执行隔离的固定基础自测，不能替代生产任务调度，也不能代表真实部署成功。
+现有 Pulumi Worker 只执行隔离的固定基础自测，Agent Worker 只生成部署方案；两者均不能代表真实部署成功。Agent 队列当前使用有界长事务和单进程内消费者；高吞吐独立 Worker、数据保留/删除、生产容量与恢复演练需后续完善。
 
 ## 历史基线
 

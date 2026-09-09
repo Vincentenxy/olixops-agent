@@ -54,6 +54,7 @@ jobs:
       - name: Migrate PostgreSQL
         run: |
           uv run alembic upgrade head
+          uv run python -m app.cli init-agent
           uv run alembic check
       - name: Test
         run: uv run pytest

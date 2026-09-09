@@ -1,10 +1,10 @@
 # 数据库设计
 
-当前版本 `20260909_0001` 仅包含本地用户、认证会话和登录限流三张表；对应 [模型](../app/models/auth.py) 与 [初始迁移](../migrations/versions/20260909_0001_local_auth.py)。后续表结构变更同时更新本文、模型和 Alembic 迁移，不在应用启动时自动建表。
+当前业务版本 `20260910_0002` 包含三张认证表和两张 Agent 分析表；分别对应 [认证模型](../app/models/auth.py)、[Agent 模型](../app/models/agent.py) 和版本迁移。LangGraph 官方 checkpoint 在独立 schema 中显式初始化。后续表结构变更同时更新本文、模型和迁移，不在应用启动时自动建表。
 
 ## 存储与连接
 
-PostgreSQL 是身份、会话撤销和限流状态的持久来源。后端使用 SQLAlchemy 异步会话与 `psycopg`，连接由 `OLIXOPS_DATABASE_URL` 注入；密码不进入仓库或日志。连接池开启 `pool_pre_ping`，SQL 参数隐藏，迁移进程使用 `NullPool`。依赖检查验证三张认证表可查询，因此未执行迁移也会报告数据库未就绪。
+PostgreSQL 保存身份、会话撤销、限流、Agent 任务与对话。后端使用 SQLAlchemy 异步会话与 `psycopg`，连接由 `OLIXOPS_DATABASE_URL` 注入；密码不进入仓库或日志。连接池开启 `pool_pre_ping`，SQL 参数隐藏，迁移进程使用 `NullPool`。依赖检查验证五张业务表可查询，因此未执行迁移也会报告数据库未就绪；该检查不代表模型或独立 checkpoint 已可用。
 
 本地 Compose 使用 `postgres:15-alpine`，库名/用户名均为 `olixops`，默认仅绑定 `127.0.0.1:15432`；密码由 `scripts/init_local.py` 生成并保存在被 Git 忽略的 `.env`。容器之间连接 `postgres:5432`。Redis 使用 `redis:7-alpine`，默认仅绑定 `127.0.0.1:16379`，容器之间连接 `redis:6379`；当前用于缓存基础设施及连通性检查，不承担认证会话或登录限流的唯一存储。
 
@@ -12,7 +12,7 @@ SQLite/`aiosqlite` 仅供测试。它不提供等同 PostgreSQL 的行锁语义�
 
 ## 公共字段
 
-三张表均包含以下字段；时间使用 PostgreSQL `TIMESTAMP WITH TIME ZONE`，应用统一写 UTC。UUID 标识在当前模型中实际使用 `VARCHAR(36)`，不是数据库原生 UUID 类型。
+所有业务表均包含以下字段；时间使用 PostgreSQL `TIMESTAMP WITH TIME ZONE`，应用统一写 UTC。UUID 标识在当前模型中实际使用 `VARCHAR(36)`，不是数据库原生 UUID 类型。
 
 | 字段 | 类型 | 规则 |
 |---|---|---|
@@ -136,10 +136,59 @@ uv run alembic check
 uv run alembic upgrade head --sql
 ```
 
-初始迁移的回退命令如下，会删除三张认证表及全部用户、会话和限流数据；仅在确认可丢弃的验证库或已有可恢复备份的变更流程中使用：
+从当前 head 回退到 base 会删除认证表和 Agent 业务表及其中数据；仅在确认可丢弃的验证库或已有可恢复备份的变更流程中使用：
 
 ```bash
 uv run alembic downgrade base
 ```
 
 后续新增迁移使用 `uv run alembic revision --autogenerate -m "describe change"`，人工审查类型、数据兼容及 `downgrade` 后再提交。`alembic_version` 由 Alembic 自管，不套用业务表审计字段。本文 SQL 已与 `20260909_0001` 的离线迁移输出核对。
+
+## agent_tasks 与 agent_turns：需求分析任务
+
+迁移 `20260910_0002` 在原有认证表之上添加两表，不改变认证数据。业务设计与接口见 [LangGraph 集成](langgraph.md)。每个 AgentTask 是一个用户持有的分析会话，每个 AgentTurn 是一次可恢复的模型分析轮次；不是 Pulumi stack 或部署操作。
+
+```sql
+CREATE TABLE agent_tasks (
+    task_id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES local_users(user_id) ON DELETE CASCADE,
+    title VARCHAR(100) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    revision INTEGER NOT NULL,
+    messages JSON NOT NULL,
+    spec JSON,
+    questions JSON NOT NULL,
+    error TEXT,
+    create_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    update_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    create_by VARCHAR(64) NOT NULL,
+    update_by VARCHAR(64) NOT NULL
+);
+CREATE INDEX ix_agent_tasks_owner_status ON agent_tasks(user_id, status);
+
+CREATE TABLE agent_turns (
+    turn_id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(36) NOT NULL REFERENCES agent_tasks(task_id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    trace_id VARCHAR(128),
+    create_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    update_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    create_by VARCHAR(64) NOT NULL,
+    update_by VARCHAR(64) NOT NULL,
+    CONSTRAINT uq_agent_turns_task_revision UNIQUE(task_id, revision)
+);
+CREATE INDEX ix_agent_turns_task_id ON agent_turns(task_id);
+CREATE INDEX ix_agent_turns_queue ON agent_turns(status, create_at);
+```
+
+task 的 status 为 queued/needs_input/ready/failed，turn 为 queued/done/failed。请求 UUID 同时作为幂等键；首次 task_id=turn_id，续聊创建新 turn_id 并增加 revision。状态、revision、内容边界由 service 与 Pydantic 校验；队列领取与业务快照更新在单事务中，消费者使用行锁跳过已被领取的轮次。
+
+用户操作的审计字段来自认证 user_id，消费者更新人固定 `system:agent-worker`，原轮次 create_by 保留请求者。消息可能包含业务信息；数据库访问与备份按业务数据管理，不能把任意对话当成可公开日志。查询最近 50 个本人任务，不暴露其他用户正文。
+
+### 官方 checkpoint schema
+
+`uv run python -m app.cli init-agent` 创建独立 `agent_graph` schema 并调用官方 AsyncPostgresSaver.setup()。官方表包括 checkpoint_migrations、checkpoints、checkpoint_blobs、checkpoint_writes；DDL/版本由锁定的 checkpointer 管理，不复制到业务 Alembic、不添加业务审计字段。应用运行连接显式设置 search_path，用户输入不能改变 schema。
+
+升级先执行 `alembic upgrade head`，再执行 `init-agent`，然后重启 API。回退业务到 `20260909_0001` 会删除上述两张 Agent 表；官方 checkpoint 不会随之删除或降级，也不会因 user 外键级联被清除。需要保留/删除会话时，必须协调两套存储；当前没有对外删除 API。备份应覆盖两套数据；同一操作的 checkpoint 可能先于业务结果提交，恢复算法按 turn_id 回收，不能以数据库两张表的事务代替 checkpoint 的持久化保证。

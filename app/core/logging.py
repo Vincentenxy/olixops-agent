@@ -135,6 +135,9 @@ def configure_logging(*, debug: bool, secrets: Iterable[str] = ()) -> None:
                 "httpx": {"level": "WARNING"},
                 "httpx2": {"level": "WARNING"},
                 "httpcore": {"level": "WARNING"},
+                # SDK debug logging includes complete prompts and provider response bodies.
+                "openai": {"level": "WARNING"},
+                "langsmith": {"level": "WARNING"},
             },
         }
     )

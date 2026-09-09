@@ -1,13 +1,13 @@
 """Read connection credentials from validated settings, never migration files."""
 
-import asyncio
-
 from alembic import context
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
+from app.core.event_loop import run_async
+from app.models import agent  # noqa: F401 -- register business tables in Base.metadata
 from app.models.auth import Base
 
 target_metadata = Base.metadata
@@ -40,4 +40,4 @@ if context.is_offline_mode():
     with context.begin_transaction():
         context.run_migrations()
 else:
-    asyncio.run(run_online())
+    run_async(run_online())

@@ -6,4 +6,10 @@ from app.core.config import Settings
 
 if __name__ == "__main__":
     settings = Settings()
-    uvicorn.run("app.main:app", host=settings.host, port=settings.port)
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        loop="app.core.event_loop:loop_factory",
+        access_log=False,
+    )

@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from app.cli import create_user, init_keys
 from app.core.config import Settings
 from app.core.database import Database
+from app.core.event_loop import run_async
 from app.core.security import Security
 from app.models.auth import LocalUser
 from app.services.auth import AuthService
@@ -86,4 +87,4 @@ def test_postgres_session_rotation_and_migrations(tmp_path: Path) -> None:
                     )
             await database.close()
 
-    asyncio.run(exercise())
+    run_async(exercise())

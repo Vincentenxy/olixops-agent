@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def _terminate_tree(process: subprocess.Popen[bytes]) -> None:
     """Kill the entire worker process group, including engine/language descendants."""
-    if os.name == "posix":
+    if sys.platform != "win32":
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:

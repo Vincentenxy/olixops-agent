@@ -25,12 +25,14 @@ class Database:
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def check(self) -> bool:
-        """Verify both connectivity and the expected migrated authentication tables."""
+        """Verify connectivity and the expected migrated business tables."""
         try:
             async with asyncio.timeout(self.timeout), self.engine.connect() as connection:
                 await connection.execute(text("SELECT user_id FROM local_users LIMIT 0"))
                 await connection.execute(text("SELECT session_id FROM auth_sessions LIMIT 0"))
                 await connection.execute(text("SELECT throttle_key FROM login_throttles LIMIT 0"))
+                await connection.execute(text("SELECT task_id FROM agent_tasks LIMIT 0"))
+                await connection.execute(text("SELECT turn_id FROM agent_turns LIMIT 0"))
             return True
         except SQLAlchemyError, TimeoutError, OSError:
             return False

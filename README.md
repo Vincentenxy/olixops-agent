@@ -8,8 +8,8 @@
 
 - `olixops-agent/`：Python 后端、Agent 工作流、MCP 查询适配和 Pulumi Worker。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
-- 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、前端登录联调。
-- 当前提供本地认证、账户和基础服务状态 API；Agent、MCP、业务任务和真实资源部署等待业务设计，不开放从 HTTP 执行 Pulumi 程序的接口。
+- 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、LangGraph 需求分析与持久会话、前端认证和方案分析入口。
+- Agent 支持通过 OpenAI 兼容接口理解 Redis/PostgreSQL 部署需求，追问缺失参数、生成结构化方案、断点恢复和失败重试。任务提交后由后台队列处理。MCP 查询、集群核验及真实部署组件仍待接入，不开放从 HTTP 执行 Pulumi 程序的接口。
 - 后续开发先阅读本 README，再读取实际存在且适用于修改目录的 `AGENTS.md`。新增专项设计文档时，在对应规范处补充入口。
 
 ## 技术栈与环境管理
@@ -26,7 +26,7 @@
 | 质量检查 | Ruff 检查与格式化、mypy 类型检查、pytest 测试 |
 | 部署 | Docker 容器化；开发环境采用 Docker Compose，目标部署于 Kubernetes |
 
-运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；LangGraph、MCP、数据库及 Pulumi Worker / 目标 Provider 仍为后续接入目标。
+运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、LangGraph、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；MCP 和目标 Provider 仍待接入。
 
 IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已实现独立 Worker 的受控程序验证入口，CLI 与 SDK 固定为 3.261.0；目标 Provider、持久任务和生产 state backend 待接入。模块说明见 [Pulumi 基础集成](design/pulumi-foundation.md)，数据库设计见 [数据库设计](design/database.md)。
 
@@ -153,7 +153,7 @@ response.http_error(status_code=401)
 
 ## 数据库规范
 
-已实现 SQLAlchemy async + psycopg、Alembic 迁移及 `local_users` / `auth_sessions` / `login_throttles` 三表。Redis 使用单个异步连接池，提供命名空间、显式 TTL 和连接状态；认证会话不依赖 Redis 保存。详细 DDL 见 [数据库设计](design/database.md)。
+已实现 SQLAlchemy async + psycopg、Alembic 迁移及三张认证表、`agent_tasks` / `agent_turns` 两张分析业务表。LangGraph checkpoint 由官方组件在独立 schema 中管理。Redis 使用单个异步连接池，提供命名空间、显式 TTL 和连接状态；认证会话不依赖 Redis 保存。详细 DDL 见 [数据库设计](design/database.md)。
 
 - PostgreSQL 保存业务数据和任务状态；Redis 用于缓存，不作为部署任务的唯一持久化来源。
 - 所有业务表设计记录在 `design/database.md`，使用 Markdown 与 SQL 代码块。该文件在首次数据库设计时创建，结构变更同步更新设计和版本迁移。
@@ -186,7 +186,11 @@ logger.warning("MCP query timed out", extra={"server_name": "inventory"})
 
 ## Agent 与 Pulumi 执行规范
 
-以下规范适用于后续业务执行。当前已有 Automation API 适配层和独立 `self-test` Worker，使用固定常量程序、隔离目录/状态、脱敏结果及进程组超时；尚无业务组件、持久业务 stack 或部署接口。临时自测不等同于生产 Worker 调度。
+当前 LangGraph 实现负责需求分析和部署方案，支持 Kubernetes 单实例 Redis/PostgreSQL、持久卷容量和内部访问需求。输入、输出均通过 Pydantic 校验，模型结果只作为数据。方案中的集群名称尚未经过实际集群查询；`ready` 表示方案生成，不能解释为部署成功。工作流、API、配置及恢复边界见 [LangGraph 集成](design/langgraph.md)。
+
+业务任务与对话保存到 `agent_tasks` / `agent_turns`，官方 PostgreSQL checkpoint 保存到独立 `agent_graph` schema。API 只持久提交，应用生命周期内的后台消费者用 `FOR UPDATE SKIP LOCKED` 领取队列；同一任务只允许一个待处理轮次。用户行锁保护提交限额，revision 防止旧页面覆盖，同一 request_id 的重放不能重复追加对话。LangGraph 使用同步 checkpoint 持久策略，中断节点只等待输入；模型调用在单独节点，恢复不会重新运行已完成的理解节点。模型原始异常不写入 checkpoint，平台不向图状态添加模型密钥或用户登录凭据，默认关闭外部 LangSmith tracing；用户输入作为业务文本保存，禁止在需求中粘贴密码或 kubeconfig。
+
+以下部署规范适用于后续资源执行。当前已有 Automation API 适配层和独立 `self-test` Worker，使用固定常量程序、隔离目录/状态、脱敏结果及进程组超时；尚无业务组件、持久业务 stack 或部署接口。Agent 方案队列和临时 Pulumi 自测不等同于生产部署调度。
 
 - MCP 的接入范围是信息查询；Agent 负责理解需求，输出经过 Pydantic 校验的部署规格。由受控、版本化的 Pulumi Python 组件和模板声明资源；模型生成的新组件先经过代码评审和测试，不作为请求内容直接执行。
 - Worker 通过 Python Automation API 管理 project、stack 和资源生命周期；其底层仍调用 Pulumi CLI。固定 Worker 镜像、CLI、Python SDK、Provider SDK / 插件及组件版本，接入时验证完整依赖链与 CPython 3.14、uv 的兼容性。
@@ -222,7 +226,7 @@ docker compose up -d --wait postgres redis
 uv run python -m app.cli init-keys
 uv run alembic upgrade head
 uv run python -m app.cli create-user --username admin --name 管理员 --admin
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run python main.py
 ```
 
 `create-user` 在终端安全读取并确认 12–128 字符密码；自动化可通过 `OLIXOPS_BOOTSTRAP_PASSWORD` 注入。不存在公开默认密码。再次执行生成配置、密钥或创建同名用户会保留已有值，不重置账号。`.env`、密钥和 `runtime/` 不进入 Git；`init_local.py` 为本地数据库生成随机密码。IDE 使用 `.venv/bin/python`。
@@ -264,8 +268,27 @@ Access token 仅保存在前端内存，默认 15 分钟；refresh token 为随�
 | `REFRESH_COOKIE_SECURE` | 本地 HTTP 为 false；生产 HTTPS 必须设 true |
 | `BROWSER_ORIGINS` | 精确 Origin JSON 列表，开发默认 localhost/127.0.0.1 的 5173/5175 |
 | `PULUMI_CLI` | 默认 `pulumi`；初始化脚本可指向项目 `runtime/tools/pulumi/pulumi` |
+| `AGENT_BASE_URL` / `AGENT_MODEL` / `AGENT_API_KEY` | OpenAI 兼容网关 API 前缀、模型名称和私密 key；未配置模型和 key 时禁用新分析，仍可查历史任务 |
+| `AGENT_RESPONSE_FORMAT` | 默认 `json_object` 并在本地校验 schema；服务商支持时可设 `json_schema` |
+| `AGENT_MODEL_TIMEOUT_SECONDS` / `AGENT_TURN_TIMEOUT_SECONDS` | 模型请求 45 秒 / 每轮含 checkpoint 90 秒；无 SDK 自动重试，失败后用户显式重试 |
+| `AGENT_MAX_OUTPUT_TOKENS` | 默认 4096；超限截断结果按失败处理 |
 
 健康检查不返回内部连接信息。缺少密钥或依赖时认证拒绝服务，进程健康检查仍可用。数据库迁移显式执行，不在 API 启动或请求中自动建表。
+
+### LangGraph 本地接入
+
+将 `.env.example` 中的 `OLIXOPS_AGENT_*` 配置加入私有 `.env`，填写兼容网关地址、模型名称和 key；服务需支持 Chat Completions JSON 输出。先执行以下命令，再从前端工作台点击“分析需求”：
+
+```bash
+uv sync --locked
+uv run alembic upgrade head
+uv run python -m app.cli init-agent
+uv run python main.py
+```
+
+`init-agent` 使用官方 checkpointer 的显式迁移，在 `agent_graph` schema 中建表；已有数据保留。Windows 的 psycopg 需要 Selector 事件循环，`main.py`、CLI 和迁移入口已统一处理。直接启动 Uvicorn 时使用 `--loop app.core.event_loop:loop_factory`；开发自动重载可附加 `--reload`。
+
+示例需求：“在 poc 集群 demo 命名空间部署 Redis 7.4（10Gi）和 PostgreSQL 16（20Gi），均为单实例、仅集群内访问。”可在任务详情继续修改；重启后仍能查看和恢复。此阶段不调用 Kubernetes 或 Pulumi 创建资源。
 
 ### Pulumi 本地基础环境
 
@@ -296,6 +319,7 @@ docker compose --profile app build
 docker compose up -d --wait postgres redis
 docker compose run --rm api python -m app.cli init-keys
 docker compose run --rm api alembic upgrade head
+docker compose run --rm api python -m app.cli init-agent
 docker compose run --rm api python -m app.cli create-user --username admin --name 管理员 --admin
 docker compose --profile app up -d
 ```

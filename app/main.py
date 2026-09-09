@@ -3,12 +3,14 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from http import HTTPStatus
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 
+from app.agents.runtime import AgentRuntime
+from app.api.agent import router as agent_router
 from app.api.auth import public_router as public_auth_router
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
@@ -21,6 +23,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.core.response import ApiResponse
 from app.core.security import Security
+from app.workers.agent import run_worker
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database(settings)
     security = Security(settings)
     cache = Cache(settings.redis_url.get_secret_value() if settings.redis_url else None)
+    agent_runtime = AgentRuntime(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -39,13 +43,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             urls.append(settings.redis_url.get_secret_value())
         configure_logging(
             debug=settings.mode == "debug",
-            secrets=[*urls, *(urlsplit(url).password or "" for url in urls)],
+            secrets=[
+                *urls,
+                *(urlsplit(url).password or "" for url in urls),
+                settings.agent_api_key.get_secret_value() if settings.agent_api_key else "",
+            ],
         )
         await asyncio.to_thread(security.load)
+        await agent_runtime.start()
+        stop = asyncio.Event()
+        worker = (
+            asyncio.create_task(run_worker(database, agent_runtime, stop), name="agent-worker")
+            if agent_runtime.configured
+            else None
+        )
         logger.info("application started")
         try:
             yield
         finally:
+            stop.set()
+            if worker:
+                worker.cancel()
+                with suppress(asyncio.CancelledError):
+                    await worker
+            await agent_runtime.close()
             await asyncio.gather(database.close(), cache.close())
             logger.info("application stopped")
 
@@ -65,12 +86,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database = database
     app.state.security = security
     app.state.cache = cache
+    app.state.agent_runtime = agent_runtime
     register_exception_handlers(app)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(public_auth_router)
     app.include_router(auth_router)
     app.include_router(system_router)
+    app.include_router(agent_router)
     return app
 
 
