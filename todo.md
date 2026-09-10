@@ -2,6 +2,11 @@
 
 更新日期：2026-09-10。本轮接通 LangGraph 需求分析和持久方案会话；实际集群与资源部署仍等待接入。
 
+## 2026-09-10 框架比较研究
+
+- [x] 对照当前代码与官方文档，比较 LangGraph、LangChain/Deep Agents、Pydantic AI、OpenAI Agents SDK、Google ADK、Microsoft Agent Framework、Dify、CrewAI、Claude Agent SDK，见 [研究笔记](design/agent-framework-comparison.md)。建议保留 LangGraph，未迁移框架或运行替代框架基准。
+- [ ] 用户提到的 `dsh`、`cdh` 需确认全名或链接后补充；替代框架的 Python 3.14 依赖兼容性与真实模型效果尚未验证。
+
 ## 2026-09-10 LangGraph 完成
 
 - [x] uv 引入并锁定 LangGraph 1.2.11、PostgreSQL checkpointer 3.1.2、OpenAI SDK 2.54.0；Python 3.14 下可导入、编译并运行真实图。

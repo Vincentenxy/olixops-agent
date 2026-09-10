@@ -26,6 +26,8 @@
 | 质量检查 | Ruff 检查与格式化、mypy 类型检查、pytest 测试 |
 | 部署 | Docker 容器化；开发环境采用 Docker Compose，目标部署于 Kubernetes |
 
+针对 POC Kubernetes Redis/PostgreSQL 开通场景的候选框架、官方能力和迁移成本，见 [Agent 框架比较研究](design/agent-framework-comparison.md)。该研究不表示替代框架已接入或完成运行验证。
+
 运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、LangGraph、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；MCP 和目标 Provider 仍待接入。
 
 IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已实现独立 Worker 的受控程序验证入口，CLI 与 SDK 固定为 3.261.0；目标 Provider、持久任务和生产 state backend 待接入。模块说明见 [Pulumi 基础集成](design/pulumi-foundation.md)，数据库设计见 [数据库设计](design/database.md)。
