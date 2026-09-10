@@ -1,6 +1,6 @@
 # LangGraph 需求分析与持久会话
 
-本轮实现将用户需求变为可校验的 Kubernetes Redis/PostgreSQL 部署方案。LangGraph 编排状态与追问，PostgreSQL 保留队列和会话；真实集群查询、MCP 和 Pulumi 资源执行仍待接入。后端规范以 [README](../README.md) 为准。
+本轮实现将用户需求变为可校验的 Kubernetes Redis/PostgreSQL 部署方案。LangGraph 编排状态与追问，PostgreSQL 保留队列和会话；真实集群查询和资源执行仍待接入。后续按 [Redis 开发计划](redis-development-plan.md) 在固定参数发布完成后接自然语言，Pulumi 业务接入暂停。后端规范以 [README](../README.md) 为准。
 
 ## 工作流
 
@@ -26,7 +26,7 @@ flowchart LR
 - 每个应用进程启动一个异步消费者。PostgreSQL `FOR UPDATE SKIP LOCKED` 独占轮次行直到图运行和业务结果提交；同一任务最多一个 queued 轮次。整个模型调用最多 45 秒、轮次最多 90 秒（可配置）。事务会占用一个数据库连接，适用于当前有限吞吐量；更高吞吐量应迁移独立执行进程并设计租约，不能简单缩短行锁范围。
 - 提交先锁用户行，再检查最多 5 个 queued 任务；每个会话最多 20 轮，每次需求最多 4000 字符。轮次序号与任务 revision 同步递增，轮次唯一约束避免重复。
 - 官方 `AsyncPostgresSaver` 使用独立 psycopg pool 与 `agent_graph` schema，autocommit、dict_row；`init-agent` 显式迁移，应用和请求不自动建表。Alembic 只管理 public 中的业务表。
-- checkpoint 仅保存普通 JSON 数据，并限制反序列化类型，关闭 pickle fallback。调用使用 `durability="sync"`；图、业务表和未来 Pulumi state 各自负责自己的状态。
+- checkpoint 仅保存普通 JSON 数据，并限制反序列化类型，关闭 pickle fallback。调用使用 `durability="sync"`；图保存分析进度，业务表保存用户任务。后续 Git 配置修订与部署结果按开发计划独立管理。
 - 消费进程取消/退出时事务回滚，轮次继续保持 queued，下个消费者可重新领取。checkpoint 中保存 turn_id：如果图已完成但业务提交未完成，重领直接回收结果；如果节点未完成，恢复 pending 节点；尚未写下 checkpoint 的模型请求可能再次调用，可能重复计费，不能承诺外部调用恰好一次。
 - `interrupt()` 节点只等待补充参数，没有模型调用或资源副作用。继续输入使用同一 thread 的 `Command(resume=...)`。HTTP 层不开放 checkpoint_id、thread_id override、任意 Command 或图状态写入。
 - 模型超时、HTTP 错误、拒绝、截断及无效 JSON 均标记 failed，返回固定安全提示。失败重试复用原轮次，不追加消息或增加 revision；只有 needs_input/ready 可以提交新一轮。
@@ -66,7 +66,7 @@ key 仅从私有 `OLIXOPS_AGENT_API_KEY` 注入，不能发给前端。网关地
 
 用户对话文本、规格、业务快照与 checkpoint 都属于持久业务数据，不要在需求中提交密码、连接串或 kubeconfig。数据库备份/访问控制需要同时覆盖 public 业务表和 agent_graph schema；按用户删除业务表记录不会自动清理独立 checkpoints，后续数据保留/删除功能需统一实现。
 
-运行步骤及环境变量见 README。`uv run python -m app.cli init-agent` 可重复执行，迁移过程用 PostgreSQL advisory lock 串行；不需要 Pulumi 登录或 Kubernetes 凭据。方案完成后仍需接入受控 Pulumi 组件、目标权限、preview/审核与实际结果验证，不能直接执行模型输出。
+运行步骤及环境变量见 README。`uv run python -m app.cli init-agent` 可重复执行，迁移过程用 PostgreSQL advisory lock 串行；不需要 Pulumi 登录或 Kubernetes 凭据。后续模型规格经校验后进入版本化模板、配置差异确认及固定 Git 修订的发布链路，不能直接执行模型输出。
 
 ## 官方依据
 

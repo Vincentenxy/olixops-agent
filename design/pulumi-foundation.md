@@ -1,5 +1,7 @@
 # Pulumi 基础集成
 
+> 当前状态（2026-09-10）：Pulumi 业务接入暂停，本文记录的代码、依赖和基础自测保留原样。Redis 部署按 [开发计划](redis-development-plan.md) 实施，以下 Provider/Stack/backend 接入事项不作为当前阶段前提。
+
 本轮实现运行时诊断、受控程序适配与独立 Worker 自测。生产部署任务、Provider 组件、远程状态和凭据由后续业务设计接入；本模块没有面向 HTTP 的 `up` / `destroy` 接口。
 
 ## 模块边界

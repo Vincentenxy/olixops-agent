@@ -1,12 +1,14 @@
 # olixops-agent
 
-通过自然语言分析应用需求、查询 MCP 信息、生成结构化部署规格并使用 Pulumi 组织部署的 DevOps 智能体后端。
+通过自然语言分析应用需求、查询环境、生成版本化配置并组织 Kubernetes 部署的 DevOps 智能体后端。
 
 本 README 是后端项目后续开发和代码评审的规范入口。接口、认证、数据库和日志约定同时作为前后端联调契约；下文明确区分已实现能力与后续架构要求，待接入事项统一记录在 [todo.md](todo.md)。
 
+当前业务开发按用户确认的 [Redis 一句话部署开发计划](design/redis-development-plan.md) 实施：集群接入 → Redis 模板 → 实例与 Git 修订 → 部署 Worker → 前端发布 → 自然语言接入。该文档规定阶段顺序与验收条件；本 README 继续规定编码和接口规范。当前采用 Git + Kustomize + 独立部署 Worker；Pulumi 暂不参与业务部署，已引入的代码、依赖、诊断和自测保留原样。
+
 ## 仓库与当前状态
 
-- `olixops-agent/`：Python 后端、Agent 工作流、MCP 查询适配和 Pulumi Worker。
+- `olixops-agent/`：Python 后端、Agent 工作流、环境查询适配和部署任务；已有 Pulumi 基础 Worker 保留。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
 - 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、LangGraph 需求分析与持久会话、前端认证和方案分析入口。
 - Agent 支持通过 OpenAI 兼容接口理解 Redis/PostgreSQL 部署需求，追问缺失参数、生成结构化方案、断点恢复和失败重试。任务提交后由后台队列处理。MCP 查询、集群核验及真实部署组件仍待接入，不开放从 HTTP 执行 Pulumi 程序的接口。
@@ -20,17 +22,18 @@
 | 项目管理 | uv；`pyproject.toml` 声明依赖，`uv.lock` 锁定解析结果 |
 | Web | FastAPI + Uvicorn，Pydantic 定义输入、输出和配置模型 |
 | Agent | LangGraph，持久化工作流进度 |
-| 工具查询 | MCP 客户端 / 适配层，对接现有查询能力 |
-| IaC | Pulumi Python + Automation API，由独立 Worker 执行；运行时仍需 Pulumi CLI 和 Provider 插件 |
+| 工具查询 | 复用现有 K8s HTTP 查询并封装工具；MCP 按查询需求适配 |
+| 配置与执行 | 目标采用 Git + Kustomize + 独立 kubectl Worker，按开发计划逐阶段接入 |
+| Pulumi 基础 | Python + Automation API 已引入并保留，业务接入暂停 |
 | 数据 | PostgreSQL 持久化；Redis 用于缓存 |
 | 质量检查 | Ruff 检查与格式化、mypy 类型检查、pytest 测试 |
 | 部署 | Docker 容器化；开发环境采用 Docker Compose，目标部署于 Kubernetes |
 
 针对 POC Kubernetes Redis/PostgreSQL 开通场景的候选框架、官方能力和迁移成本，见 [Agent 框架比较研究](design/agent-framework-comparison.md)；DeepSeek Harness、Codex harness 与现有 LangGraph 的专项比较见 [Harness 选型研究](design/agent-harness-comparison.md)。这些研究不表示替代框架已接入或完成运行验证。
 
-运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、LangGraph、Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；MCP 和目标 Provider 仍待接入。
+运行环境已切换为 CPython 3.14，补丁版本由 `.python-version` 固定，容器镜像同步使用该版本。已有 Python 3.9 环境会在 `uv sync` 时被替换为符合项目约束的环境。FastAPI、Pydantic、LangGraph、已保留的 Pulumi Python SDK 与质量工具的实际版本由 `uv.lock` 锁定；真实环境查询和业务部署仍待接入。
 
-IaC 目标选型已由 Terraform 调整为 Pulumi，优先利用 Python 组件和 Automation API 构建内部平台。选型理由、开发运维对比和接入验证范围见 [IaC 选型记录](design/iac-selection.md)；执行规范仍以本 README 为准。当前已实现独立 Worker 的受控程序验证入口，CLI 与 SDK 固定为 3.261.0；目标 Provider、持久任务和生产 state backend 待接入。模块说明见 [Pulumi 基础集成](design/pulumi-foundation.md)，数据库设计见 [数据库设计](design/database.md)。
+历史上曾从 Terraform 改选 Pulumi，2026-09-10 用户决定暂停业务接入，改按上述 Redis 开发计划推进。历史选型依据见 [IaC 选型记录](design/iac-selection.md)。已实现的 Pulumi 独立 Worker 受控自测、CLI/SDK 3.261.0 保留，不把 Provider、Stack 或 state backend 作为当前阶段任务。模块说明见 [Pulumi 基础集成](design/pulumi-foundation.md)，数据库设计见 [数据库设计](design/database.md)。
 
 - 统一使用 uv 管理依赖和运行项目命令；通过 `uv add` / `uv add --dev` 更新声明与锁文件。
 - 提交 `pyproject.toml`、`uv.lock`、`.python-version`；`.venv/`、本地密钥、真实 `.env` 和工具缓存加入忽略规则。
@@ -52,9 +55,8 @@ olixops-agent/
 │   ├── repositories/       # 数据访问
 │   ├── models/             # 数据库模型
 │   ├── agents/             # LangGraph 状态、节点和工作流
-│   ├── integrations/mcp/   # MCP 查询适配
-│   └── workers/            # 部署任务领取、Pulumi Automation API 执行与结果回收
-├── iac/                    # Pulumi Python 项目、可复用组件与模板；运行产物另行保存
+│   ├── integrations/       # K8s 查询、Git 等适配；保留已有 Pulumi 基础
+│   └── workers/            # 部署任务领取、受控执行与结果核对；已有自测保留
 ├── migrations/             # 数据库版本迁移
 ├── tests/                  # 单元和集成测试
 ├── design/                 # 接口、数据与部署设计
@@ -64,7 +66,7 @@ olixops-agent/
 └── README.md
 ```
 
-路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，Pulumi Automation API 及其 CLI / Provider 子进程由独立 Worker 管理，不在 FastAPI 请求内运行。前端代码保存在 `olixops-agent-web/`。
+路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，资源执行由独立部署 Worker 管理，不在 FastAPI 请求内运行。模板与实例期望配置按开发计划保存到配置 Git 仓库，其具体地址仍待确定。前端代码保存在 `olixops-agent-web/`。
 
 ## Python 编码规范
 
@@ -186,13 +188,19 @@ logger.warning("MCP query timed out", extra={"server_name": "inventory"})
 
 日志级别统一使用 `debug` / `info` / `warning` / `error`；异常保留类型和堆栈位置，省略可能含凭据的异常原文、源码行和局部变量。配置值和常见 password/token/Bearer/连接串/私钥形式会脱敏，任意业务文本仍需调用方选择可公开字段，禁止记录请求正文。Automation API 返回值和引擎事件按字段映射、脱敏后再入库或发送前端；支持 `show_secrets` 的调用显式关闭该选项，不直接序列化完整结果。secret 加密不能代替日志脱敏。
 
-## Agent 与 Pulumi 执行规范
+## Agent 与部署执行规范
 
 当前 LangGraph 实现负责需求分析和部署方案，支持 Kubernetes 单实例 Redis/PostgreSQL、持久卷容量和内部访问需求。输入、输出均通过 Pydantic 校验，模型结果只作为数据。方案中的集群名称尚未经过实际集群查询；`ready` 表示方案生成，不能解释为部署成功。工作流、API、配置及恢复边界见 [LangGraph 集成](design/langgraph.md)。
 
 业务任务与对话保存到 `agent_tasks` / `agent_turns`，官方 PostgreSQL checkpoint 保存到独立 `agent_graph` schema。API 只持久提交，应用生命周期内的后台消费者用 `FOR UPDATE SKIP LOCKED` 领取队列；同一任务只允许一个待处理轮次。用户行锁保护提交限额，revision 防止旧页面覆盖，同一 request_id 的重放不能重复追加对话。LangGraph 使用同步 checkpoint 持久策略，中断节点只等待输入；模型调用在单独节点，恢复不会重新运行已完成的理解节点。模型原始异常不写入 checkpoint，平台不向图状态添加模型密钥或用户登录凭据，默认关闭外部 LangSmith tracing；用户输入作为业务文本保存，禁止在需求中粘贴密码或 kubeconfig。
 
-以下部署规范适用于后续资源执行。当前已有 Automation API 适配层和独立 `self-test` Worker，使用固定常量程序、隔离目录/状态、脱敏结果及进程组超时；尚无业务组件、持久业务 stack 或部署接口。Agent 方案队列和临时 Pulumi 自测不等同于生产部署调度。
+### 当前 Redis 部署路线
+
+执行步骤、模块职责、Git 与集群状态的恢复契约统一见 [Redis 开发计划](design/redis-development-plan.md)。模型输出经 Pydantic 校验，确定的模板生成非敏感配置，发布绑定 Git 修订；独立 Worker 应用该修订并验证 Redis 与外部入口。实例、配置修订和部署任务分别记录。真实资源执行尚未实现，当前分析队列不能代替部署队列。
+
+### Pulumi 历史执行约定（业务接入暂停）
+
+以下约定保留供已有基础模块维护或未来重新选用 Pulumi 时参考，不是当前 Redis 发布的前提。当前已有 Automation API 适配层和独立 `self-test` Worker，使用固定常量程序、隔离目录/状态、脱敏结果及进程组超时；尚无业务组件、持久业务 stack 或部署接口。
 
 - MCP 的接入范围是信息查询；Agent 负责理解需求，输出经过 Pydantic 校验的部署规格。由受控、版本化的 Pulumi Python 组件和模板声明资源；模型生成的新组件先经过代码评审和测试，不作为请求内容直接执行。
 - Worker 通过 Python Automation API 管理 project、stack 和资源生命周期；其底层仍调用 Pulumi CLI。固定 Worker 镜像、CLI、Python SDK、Provider SDK / 插件及组件版本，接入时验证完整依赖链与 CPython 3.14、uv 的兼容性。

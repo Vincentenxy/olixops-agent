@@ -1,8 +1,10 @@
 # LangGraph、DeepSeek Harness 与 Codex Harness 的适配研究
 
+> 当前实施入口：[Redis 开发计划](redis-development-plan.md)。用户已暂停 Pulumi 业务接入，先保留现有 LangGraph 完成 Redis 链路；本文是候选运行时研究，以下迁移方案和 Pulumi 路线不代表当前开发任务。
+
 研究日期：2026-09-10。用户确认此前的 `dsh` 指 **DeepSeek Harness**，另一个候选指 **Codex 的 harness**。DeepSeek Harness 是 DeepSeek 官方独立开源项目，与 LangChain Deep Agents 不同；本篇补充 [原框架比较](agent-framework-comparison.md)，不代表已迁移或安装。
 
-当前业务目标是为已有 POC Kubernetes 集群开通 Redis/PostgreSQL。项目已有 Python 3.14、FastAPI、React、LangGraph 分析与追问、持久任务和 Pulumi 基础 Worker；实际 MCP 查询、Helm 模板与部署闭环仍待开发。[当前实现](langgraph.md)、[执行规范](../README.md#agent-与-pulumi-执行规范)。
+当前业务目标是为已有 POC Kubernetes 集群开通 Redis/PostgreSQL。项目已有 Python 3.14、FastAPI、React、LangGraph 分析与追问、持久任务和 Pulumi 基础 Worker；实际 MCP 查询、Helm 模板与部署闭环仍待开发。[当前实现](langgraph.md)、[执行规范](../README.md#agent-与部署执行规范)。
 
 ## 三者首先是不同层次的选择
 
