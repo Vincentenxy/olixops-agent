@@ -5,7 +5,8 @@
 ## 2026-09-10 框架比较研究
 
 - [x] 对照当前代码与官方文档，比较 LangGraph、LangChain/Deep Agents、Pydantic AI、OpenAI Agents SDK、Google ADK、Microsoft Agent Framework、Dify、CrewAI、Claude Agent SDK，见 [研究笔记](design/agent-framework-comparison.md)。建议保留 LangGraph，未迁移框架或运行替代框架基准。
-- [ ] 用户提到的 `dsh`、`cdh` 需确认全名或链接后补充；替代框架的 Python 3.14 依赖兼容性与真实模型效果尚未验证。
+- [x] 用户已澄清为 DeepSeek Harness 与 Codex harness；专项核实 Python SDK、MCP、审批、会话恢复与现有 runtime 替换边界，见 [Harness 选型研究](design/agent-harness-comparison.md)。有限模板 POC 可保留 LangGraph；通用运维助手可直接选择一个 harness，不默认叠加两套 Agent 循环。
+- [ ] 替代框架的 Python 3.14 完整依赖及容器运行兼容性、实际模型网关、MCP 与恢复效果尚未验证；特别验证 DSH SDK 的审批/取消限制，以及 Codex SDK 与 App Server 各集成路径的成熟度边界。
 
 ## 2026-09-10 LangGraph 完成
 

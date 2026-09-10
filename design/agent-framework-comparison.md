@@ -4,7 +4,7 @@
 
 ## 需求与判断标准
 
-本轮目标是在已有 POC Kubernetes 集群中开通单实例 Redis/PostgreSQL，默认持久卷与集群内访问。已有 Python/FastAPI、React、PostgreSQL 和 Pulumi Automation API 基础；计划通过受控模板和 Helm Release 完成资源管理。用户提到的 `dsh`、`cdh` 全名尚未确认，不能把它们自行等同于某个 SDK、产品或框架。
+本轮目标是在已有 POC Kubernetes 集群中开通单实例 Redis/PostgreSQL，默认持久卷与集群内访问。已有 Python/FastAPI、React、PostgreSQL 和 Pulumi Automation API 基础；计划通过受控模板和 Helm Release 完成资源管理。用户已澄清原先的 `dsh`、`cdh` 指 **DeepSeek Harness 与 Codex 的 harness**，专项核实和三方比较见 [Harness 选型研究](agent-harness-comparison.md)。它们分别不同于本文的 Deep Agents、OpenAI Agents SDK。
 
 这个范围的主要难点是准确提取参数、查询集群事实、明确流程状态、处理缺失参数和执行失败。比较应优先关注这些能力，以及持久恢复、模型网关适配、现有项目的改造量。多智能体协作、任意代码执行、文件系统工具是否丰富，暂时不构成主要选型依据。
 
@@ -108,7 +108,7 @@ SDK 将 Claude 的 Agent 循环和文件、命令等工具嵌入应用，支持 
 
 ## 建议与迁移成本
 
-针对当前范围，**建议保留 LangGraph 主流程，Pydantic AI 作为轻量备选**。显式步骤、持久多轮状态与现有受控执行模式匹配，已有代码也实现了相关恢复行为。迁移成本只是因素之一；如果从零开始且只做短流程，普通 Python + 模型 SDK 或 Pydantic AI 也可以合理满足需求。
+针对有限模板开通范围，**建议保留 LangGraph 主流程，Pydantic AI 作为轻量备选**。显式步骤、持久多轮状态与现有受控执行模式匹配，已有代码也实现了相关恢复行为。迁移成本只是因素之一；如果从零开始且只做短流程，普通 Python + 模型 SDK 或 Pydantic AI 也可以合理满足需求。这个结论不排除完整 harness：若目标扩展为自主工具调用、仓库分析和排障，可以用 DSH 或 Codex 直接替换当前分析 runtime，无须默认叠加两套 Agent 循环，详见 [专项比较](agent-harness-comparison.md)。
 
 | 方向 | 需要保留或改变的内容 | 主要成本 |
 | --- | --- | --- |
@@ -136,7 +136,7 @@ LangGraph checkpoint 管流程进度，业务表管用户归属、任务和授�
 
 ## 未决项与验证范围
 
-- `dsh`、`cdh` 全名或链接待用户确认；本次不猜测它们代表哪一个框架。
+- `dsh`、`cdh` 已由用户澄清，官方入口、SDK 边界与工程适配结论收录在 [Harness 选型研究](agent-harness-comparison.md)。
 - 官方文档按访问日记录，新 API 不自动适用于项目锁定版本。本次未安装任何替代框架，未验证它们在 Python 3.14 下的完整依赖链。
 - 本次是文档与架构适配研究，没有对各框架执行相同任务的性能、费用或模型准确率基准。结构化输出质量仍须使用真实模型和同一组需求验证。
 - 若验证替代方案，应使用同一验收集：缺参追问、规格校验、MCP 查询失败、等待确认时进程重启、执行后响应丢失、重复提交，以及旧预览不能执行新参数。
