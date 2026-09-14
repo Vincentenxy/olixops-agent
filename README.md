@@ -4,12 +4,13 @@
 
 本 README 是后端项目后续开发和代码评审的规范入口。接口、认证、数据库和日志约定同时作为前后端联调契约；下文明确区分已实现能力与后续架构要求，待接入事项统一记录在 [todo.md](todo.md)。
 
-当前业务开发按用户确认的 [Redis 一句话部署开发计划](design/redis-development-plan.md) 实施：集群接入 → Redis 模板 → 实例与 Git 修订 → 部署 Worker → 前端发布 → 自然语言接入。该文档规定阶段顺序与验收条件；本 README 继续规定编码和接口规范。当前采用 Git + Kustomize + 独立部署 Worker；Pulumi 暂不参与业务部署，已引入的代码、依赖、诊断和自测保留原样。
+当前业务开发按用户确认并于 2026-09-13 调整的 [Redis 一句话部署开发计划](design/redis-development-plan.md) 实施：软件清单 Git 仓库 → 集群接入 → Redis 模板验证 → 实例与 Git 修订 → 部署 Worker → 前端发布 → 自然语言接入。该文档规定阶段顺序与验收条件；本 README 继续规定编码和接口规范。当前采用 Git + Kustomize + 独立部署 Worker；Pulumi 暂不参与业务部署，已引入的代码、依赖、诊断和自测保留原样。
 
 ## 仓库与当前状态
 
 - `olixops-agent/`：Python 后端、Agent 工作流、环境查询适配和部署任务；已有 Pulumi 基础 Worker 保留。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
+- 配置管理（设计审阅中）：最新推荐 [GitLab 稳定模板 + PostgreSQL 用户配置](design/gitlab-templates-postgresql-configs.md)，模板固定完整 Git commit，个人参数与历史由 PG 管理；先前全 Git 和个人分支方案保留作比较。实际模板仓库与配置管理功能均未建立。
 - 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、LangGraph 需求分析与持久会话、前端认证和方案分析入口。
 - Agent 支持通过 OpenAI 兼容接口理解 Redis/PostgreSQL 部署需求，追问缺失参数、生成结构化方案、断点恢复和失败重试。任务提交后由后台队列处理。MCP 查询、集群核验及真实部署组件仍待接入，不开放从 HTTP 执行 Pulumi 程序的接口。
 - 后续开发先阅读本 README，再读取实际存在且适用于修改目录的 `AGENTS.md`。新增专项设计文档时，在对应规范处补充入口。
@@ -66,7 +67,7 @@ olixops-agent/
 └── README.md
 ```
 
-路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，资源执行由独立部署 Worker 管理，不在 FastAPI 请求内运行。模板与实例期望配置按开发计划保存到配置 Git 仓库，其具体地址仍待确定。前端代码保存在 `olixops-agent-web/`。
+路由负责协议适配，业务逻辑放入 service；数据库访问集中在 repository。Agent 节点调用明确的业务和工具接口，资源执行由独立部署 Worker 管理，不在 FastAPI 请求内运行。软件清单仓库定义 `catalog/` 中的公共软件包；个人配置存储、参数转换和发布修订以本 README 上方的最新设计入口为准，实施时统一配置来源及 Worker 输入。数据库保存任务与实际验证结果。前端代码保存在 `olixops-agent-web/`。
 
 ## Python 编码规范
 
