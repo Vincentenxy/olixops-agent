@@ -24,7 +24,7 @@
 
 | 位置 | 本计划职责 |
 | --- | --- |
-| `kube-efficient-api` | 复用已有 Go/client-go HTTP 查询；补充服务鉴权、存储、工作负载及 Gateway 查询 |
+| `olixops-k8s-ctl` | 独立 Go/Kubernetes 控制项目；负责 client-go 集群连接、Namespace/存储/工作负载/Gateway 查询及后续受控操作 |
 | `olixops-agent` | 参数契约、模板渲染、Git 配置版本、实例与部署任务、Agent 编排 |
 | 独立部署 Worker | 使用对应集群凭据，领取持久任务、应用指定版本、核对实际资源和服务 |
 | `olixops-agent-web` | 固定参数操作、差异、发布进度、实例详情及自然语言交互 |
@@ -56,7 +56,7 @@
 **实施：**
 
 1. 确定 POC 集群标识、查询地址、执行凭据引用、允许使用的 Namespace、StorageClass、镜像来源及 Gateway 控制器/版本。
-2. 核对旧 K8s 项目当前代码。计划制定时，其 JWT 中间件仅检查 Authorization 非空，需补真实鉴权；客户端为单集群全局实例，第一版使用明确的固定集群映射。
+2. 在 `olixops-k8s-ctl` 中接入 client-go 和受控集群连接。外部调用需要服务鉴权，集群凭据不得返回给调用方；第一版使用明确的固定集群映射。
 3. 补充 StatefulSet、PVC、StorageClass、Events、Pod readiness、Gateway/TCPRoute 查询，提供可校验的摘要结果和明确错误。
 4. 确定 Gateway 地址、TCP Listener、端口分配与路由关联方式。共享 Gateway/Listener 由平台统一维护；实例拥有自己的 TCPRoute。跨 Namespace 关联按实际控制器和 API 规则校验。
 

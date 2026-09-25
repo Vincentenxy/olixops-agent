@@ -10,6 +10,7 @@
 
 - `olixops-agent/`：Python 后端、Agent 工作流、环境查询适配和部署任务；已有 Pulumi 基础 Worker 保留。
 - `olixops-agent-web/`：独立前端项目，通过后端 API 提交需求、查看变更和部署结果。
+- `E:\goland\projects\olixops-k8s-ctl/`：独立 Go/Kubernetes 控制项目，当前已完成 Gin/Viper/Zap 服务骨架和健康接口；真实 client-go 集群控制仍待阶段 1 接入。
 - 配置管理（设计审阅中）：最新推荐 [GitLab 稳定模板 + PostgreSQL 用户配置](design/gitlab-templates-postgresql-configs.md)，模板固定完整 Git commit，个人参数与历史由 PG 管理；先前全 Git 和个人分支方案保留作比较。实际模板仓库与配置管理功能均未建立。
 - 当前已实现：FastAPI、PostgreSQL 异步连接与 Alembic 迁移、Redis 缓存、RSA JWT 本地登录及会话撤销、结构化脱敏日志、健康与就绪检查、Pulumi 运行时诊断及独立 Worker 引擎自测、LangGraph 需求分析与持久会话、前端认证和方案分析入口。
 - Agent 支持通过 OpenAI 兼容接口理解 Redis/PostgreSQL 部署需求，追问缺失参数、生成结构化方案、断点恢复和失败重试。任务提交后由后台队列处理。MCP 查询、集群核验及真实部署组件仍待接入，不开放从 HTTP 执行 Pulumi 程序的接口。
@@ -23,7 +24,7 @@
 | 项目管理 | uv；`pyproject.toml` 声明依赖，`uv.lock` 锁定解析结果 |
 | Web | FastAPI + Uvicorn，Pydantic 定义输入、输出和配置模型 |
 | Agent | LangGraph，持久化工作流进度 |
-| 工具查询 | 复用现有 K8s HTTP 查询并封装工具；MCP 按查询需求适配 |
+| 工具查询 | 通过 `olixops-k8s-ctl` 提供受控 K8s 查询并封装工具；MCP 按查询需求适配 |
 | 配置与执行 | 目标采用 Git + Kustomize + 独立 kubectl Worker，按开发计划逐阶段接入 |
 | Pulumi 基础 | Python + Automation API 已引入并保留，业务接入暂停 |
 | 数据 | PostgreSQL 持久化；Redis 用于缓存 |
