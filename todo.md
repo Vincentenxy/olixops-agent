@@ -15,6 +15,7 @@
 - [x] 2026-09-14 补充应用目录发现与配置列表：main 软件索引、个人分支配置索引、固定 SHA 读取、正文与索引同提交、遗漏文件核对和可重建搜索投影。仅设计补充，索引文件、列表接口与同步逻辑未实现。
 - [x] 2026-09-14 提供 [GitLab 模板 + PG 用户配置推荐方案](design/gitlab-templates-postgresql-configs.md)，明确 PG 配置正文、不可变修订、模板固定版本、生成产物和备份职责，并同步设计入口。未实现或迁移配置数据。
 - [x] 2026-09-25 初始化独立 `E:\goland\projects\olixops-k8s-ctl` Go 项目，参考 Env Vault `origin/init` 建立配置、Gin 路由、Zap 日志、统一响应、请求 ID、健康/就绪接口、测试和 Dockerfile；初始提交为 `9f50411`。`go test ./...`、`go vet ./...`、`go build ./...` 通过，真实 HTTP 健康检查返回 200；尚未接入 client-go 或 POC 集群。
+- [x] 2026-09-27 在 `olixops-k8s-ctl` 接入 kubeconfig/client-go、Namespace/StorageClass/工作负载/Gateway 查询，以及受控 kubectl apply dry-run/apply 和 Helm upgrade 接口；提交 `bb2d9b0`。本机 kubeconfig 连接 context `kubernetes-admin@kubernetes` 验证成功：API Server v1.28.15、25 个 Namespace、StorageClass、default Namespace 资源和 GatewayClass 查询返回 200；TCPRoute CRD 当前缺失并被明确报告。ConfigMap server dry-run 通过，Secret manifest 被拒绝；未创建或修改真实集群资源。阶段 1 仍待服务鉴权、Namespace 归属、端口分配和完整 POC 验收。
 - [ ] 阶段 0A：建立私有 GitLab 软件清单项目、Redis 包骨架、参数契约与检查入口。GitLab 地址/版本、项目和身份未提供，实际仓库和清单尚未创建。
 - [ ] 阶段 0B：配置管理设计待用户审阅；按最终存储模型统一计划和契约，再实现固定模板读取、配置保存/读回、权限、历史与差异页面。最新推荐 PG 保存个人配置，此前个人分支和实例索引不是该方案前提。没有实现代码或创建远端资源。
 - [ ] 阶段 1：集群接入与环境核验。补真实鉴权及存储/Gateway 查询，确认目标和 TCP 入口。
