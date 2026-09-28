@@ -1,6 +1,6 @@
 # 后端待办与验证记录
 
-更新日期：2026-09-25。已有 LangGraph 需求分析和持久方案会话；配置存储仍在设计审阅，最新推荐按用户提出的方向采用 GitLab 公共稳定模板 + PG 个人配置正文和历史。先前全 Git、个人分支方案保留作比较。当前仅完成设计，GitLab、实际集群与资源部署尚未接通；Pulumi 业务接入暂停，现有代码保留。
+更新日期：2026-09-28。已有 LangGraph 需求分析和持久方案会话；配置存储仍在设计审阅，最新推荐按用户提出的方向采用 GitLab 公共稳定模板 + PG 个人配置正文和历史。先前全 Git、个人分支方案保留作比较。当前仅完成设计，GitLab、实际集群与资源部署尚未接通；Pulumi 业务接入暂停，现有代码保留。
 
 ## Redis 开发计划与阶段进度
 
@@ -16,6 +16,7 @@
 - [x] 2026-09-14 提供 [GitLab 模板 + PG 用户配置推荐方案](design/gitlab-templates-postgresql-configs.md)，明确 PG 配置正文、不可变修订、模板固定版本、生成产物和备份职责，并同步设计入口。未实现或迁移配置数据。
 - [x] 2026-09-25 初始化独立 `E:\goland\projects\olixops-k8s-ctl` Go 项目，参考 Env Vault `origin/init` 建立配置、Gin 路由、Zap 日志、统一响应、请求 ID、健康/就绪接口、测试和 Dockerfile；初始提交为 `9f50411`。`go test ./...`、`go vet ./...`、`go build ./...` 通过，真实 HTTP 健康检查返回 200；尚未接入 client-go 或 POC 集群。
 - [x] 2026-09-27 在 `olixops-k8s-ctl` 接入 kubeconfig/client-go、Namespace/StorageClass/工作负载/Gateway 查询，以及受控 kubectl apply dry-run/apply 和 Helm upgrade 接口；提交 `bb2d9b0`。本机 kubeconfig 连接 context `kubernetes-admin@kubernetes` 验证成功：API Server v1.28.15、25 个 Namespace、StorageClass、default Namespace 资源和 GatewayClass 查询返回 200；TCPRoute CRD 当前缺失并被明确报告。ConfigMap server dry-run 通过，Secret manifest 被拒绝；未创建或修改真实集群资源。阶段 1 仍待服务鉴权、Namespace 归属、端口分配和完整 POC 验收。
+- [x] 2026-09-28 将 kubeconfig 读取抽象为 `kubeconfig.Provider`：当前 file Provider 读取 `~/.kube/config`，DatabaseProvider 暴露 `DatabaseReader` 适配接口，client-go、kubectl 和 Helm 共用 Provider；提交 `6bcb021`。Provider 单元测试、`go test ./...`、`go vet ./...`、`go build ./...` 和真实集群 status/dry-run 验证通过；数据库尚未接入，凭据仍不写日志。
 - [ ] 阶段 0A：建立私有 GitLab 软件清单项目、Redis 包骨架、参数契约与检查入口。GitLab 地址/版本、项目和身份未提供，实际仓库和清单尚未创建。
 - [ ] 阶段 0B：配置管理设计待用户审阅；按最终存储模型统一计划和契约，再实现固定模板读取、配置保存/读回、权限、历史与差异页面。最新推荐 PG 保存个人配置，此前个人分支和实例索引不是该方案前提。没有实现代码或创建远端资源。
 - [ ] 阶段 1：集群接入与环境核验。补真实鉴权及存储/Gateway 查询，确认目标和 TCP 入口。
