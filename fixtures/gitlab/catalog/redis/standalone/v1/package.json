@@ -1,0 +1,8 @@
+{
+  "template_id": "redis/standalone/v1",
+  "software_kind": "redis",
+  "version": "v1",
+  "commit_sha": "fixture-main-redis-v1",
+  "schema_file": "parameters.schema.json",
+  "manifest_file": "base/redis.yaml"
+}

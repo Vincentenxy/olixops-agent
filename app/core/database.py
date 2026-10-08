@@ -33,6 +33,10 @@ class Database:
                 await connection.execute(text("SELECT throttle_key FROM login_throttles LIMIT 0"))
                 await connection.execute(text("SELECT task_id FROM agent_tasks LIMIT 0"))
                 await connection.execute(text("SELECT turn_id FROM agent_turns LIMIT 0"))
+                await connection.execute(text("SELECT config_id FROM deployment_configs LIMIT 0"))
+                await connection.execute(
+                    text("SELECT revision_id FROM configuration_revisions LIMIT 0")
+                )
             return True
         except SQLAlchemyError, TimeoutError, OSError:
             return False

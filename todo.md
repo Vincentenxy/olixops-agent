@@ -4,6 +4,8 @@
 
 ## Redis 开发计划与阶段进度
 
+2026-10-08 开发起点复核：可以开始软件安装模板管理，优先落实阶段 0A/0B，按最新“GitLab 公共模板 + PG 用户配置”方向统一此前草案。第一条交付链路为 Redis 软件包规范与参数 schema → 软件目录/固定 SHA 模板读取 → PG 个人配置及不可变修订 → 参数表单与 YAML 预览。管理能力放在 olixops-agent，olixops-k8s-ctl 保持集群访问与执行职责。已核对两仓代码：模板读取、配置表及管理接口尚未实现；已有集群查询和 server dry-run 的历史验证不代表真实 Redis 或 Helm 安装已验收。本次仅核对代码与计划，没有再次连接集群。GitLab 地址、模板项目和访问身份仍待提供；本地包契约与模块开发可先开展，真实 GitLab 联调及实际安装保留待验收。
+
 完整任务与验收条件见 [Redis 一句话部署开发计划](design/redis-development-plan.md)。本节是跨仓库阶段进度入口；前端 todo 记录前端实现和联调证据。当前从新增阶段 0 开始，文档落档不代表阶段已完成。
 
 - [x] 将用户确认的六阶段计划落档，更新前后端 AGENTS 入口与现行部署口径；仅修改文档。
@@ -17,6 +19,7 @@
 - [x] 2026-09-25 初始化独立 `E:\goland\projects\olixops-k8s-ctl` Go 项目，参考 Env Vault `origin/init` 建立配置、Gin 路由、Zap 日志、统一响应、请求 ID、健康/就绪接口、测试和 Dockerfile；初始提交为 `9f50411`。`go test ./...`、`go vet ./...`、`go build ./...` 通过，真实 HTTP 健康检查返回 200；尚未接入 client-go 或 POC 集群。
 - [x] 2026-09-27 在 `olixops-k8s-ctl` 接入 kubeconfig/client-go、Namespace/StorageClass/工作负载/Gateway 查询，以及受控 kubectl apply dry-run/apply 和 Helm upgrade 接口；提交 `bb2d9b0`。本机 kubeconfig 连接 context `kubernetes-admin@kubernetes` 验证成功：API Server v1.28.15、25 个 Namespace、StorageClass、default Namespace 资源和 GatewayClass 查询返回 200；TCPRoute CRD 当前缺失并被明确报告。ConfigMap server dry-run 通过，Secret manifest 被拒绝；未创建或修改真实集群资源。阶段 1 仍待服务鉴权、Namespace 归属、端口分配和完整 POC 验收。
 - [x] 2026-09-28 将 kubeconfig 读取抽象为 `kubeconfig.Provider`：当前 file Provider 读取 `~/.kube/config`，DatabaseProvider 暴露 `DatabaseReader` 适配接口，client-go、kubectl 和 Helm 共用 Provider；提交 `6bcb021`。Provider 单元测试、`go test ./...`、`go vet ./...`、`go build ./...` 和真实集群 status/dry-run 验证通过；数据库尚未接入，凭据仍不写日志。
+- [x] 2026-10-08 完成最小 Redis 配置垂直切片：本地 fixture 模拟 GitLab `redis/standalone/v1` 模板，PostgreSQL 配置对象/不可变修订迁移与 API，生成 Deployment+Service YAML；配置 API 测试完成保存、读回和历史，`olixops-k8s-ctl` 对同一渲染清单执行 server dry-run 返回 200。`pytest` 全量 89 通过、6 跳过，fixture/API 测试通过；真实 PostgreSQL `alembic check` 因本机数据库连接超时未完成，实际资源未创建。真实 GitLab 读取和正式 Redis apply 仍待后续验收。
 - [ ] 阶段 0A：建立私有 GitLab 软件清单项目、Redis 包骨架、参数契约与检查入口。GitLab 地址/版本、项目和身份未提供，实际仓库和清单尚未创建。
 - [ ] 阶段 0B：配置管理设计待用户审阅；按最终存储模型统一计划和契约，再实现固定模板读取、配置保存/读回、权限、历史与差异页面。最新推荐 PG 保存个人配置，此前个人分支和实例索引不是该方案前提。没有实现代码或创建远端资源。
 - [ ] 阶段 1：集群接入与环境核验。补真实鉴权及存储/Gateway 查询，确认目标和 TCP 入口。

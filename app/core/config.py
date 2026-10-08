@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     ]
     login_failure_limit: int = Field(default=5, ge=2, le=20)
     login_lock_seconds: int = Field(default=30, ge=1, le=600)
+    template_fixture_root: Path = Path("fixtures/gitlab")
 
     @field_validator("agent_base_url")
     @classmethod

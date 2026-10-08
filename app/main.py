@@ -13,6 +13,7 @@ from app.agents.runtime import AgentRuntime
 from app.api.agent import router as agent_router
 from app.api.auth import public_router as public_auth_router
 from app.api.auth import router as auth_router
+from app.api.configuration import router as configuration_router
 from app.api.health import router as health_router
 from app.api.system import router as system_router
 from app.core.cache import Cache
@@ -94,6 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(system_router)
     app.include_router(agent_router)
+    app.include_router(configuration_router)
     return app
 
 

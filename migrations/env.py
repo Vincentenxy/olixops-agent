@@ -7,7 +7,10 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
 from app.core.event_loop import run_async
-from app.models import agent  # noqa: F401 -- register business tables in Base.metadata
+from app.models import (
+    agent,  # noqa: F401 -- register business tables in Base.metadata
+    configuration,  # noqa: F401 -- register config tables in Base.metadata
+)
 from app.models.auth import Base
 
 target_metadata = Base.metadata
