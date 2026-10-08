@@ -1,7 +1,7 @@
 """Configuration management contracts for the first Redis fixture slice."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -20,7 +20,7 @@ class RedisParameters(StrictModel):
     name: Name
     namespace: Name
     image: Annotated[str, StringConstraints(min_length=1, max_length=256)] = "redis:7.2-alpine"
-    replicas: Annotated[int, Field(strict=True)] = 1
+    replicas: Literal[1] = 1
     port: Annotated[int, Field(strict=True, ge=1, le=65535)] = 6379
 
 
